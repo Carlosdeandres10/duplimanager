@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DupliManager — Copias de Seguridad Inteligentes</title>
+    <meta
+      name="description"
+      content="Software de copias de seguridad con deduplicación, powered by Duplicacy"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🛡️</text></svg>"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <!-- ═══ SIDEBAR ═══ -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">
+            <div class="logo-icon">🛡️</div>
+            <div>
+              <h1>DupliManager</h1>
+              <small>Backup & Recovery</small>
+            </div>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">General</div>
+            <div class="nav-item active" data-view="dashboard">
+              <span class="icon">📊</span>
+              <span>Dashboard</span>
+            </div>
+            <div class="nav-item" data-view="backup">
+              <span class="icon">⬆️</span>
+              <span>Backup</span>
+            </div>
+            <div class="nav-item" data-view="snapshots">
+              <span class="icon">📋</span>
+              <span>Snapshots</span>
+            </div>
+            <div class="nav-item" data-view="restore">
+              <span class="icon">⬇️</span>
+              <span>Restaurar</span>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <div class="nav-section-title">Sistema</div>
+            <div class="nav-item" data-view="settings">
+              <span class="icon">⚙️</span>
+              <span>Configuración</span>
+            </div>
+            <div class="nav-item" data-view="logs">
+              <span class="icon">📜</span>
+              <span>Logs</span>
+            </div>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div id="server-status">
+            <span class="badge badge-info">⏳ Conectando...</span>
+          </div>
+          <div class="version" style="margin-top: 8px">
+            v1.0.0 · Powered by Duplicacy
+          </div>
+        </div>
+      </aside>
+
+      <!-- ═══ MAIN CONTENT ═══ -->
+      <main class="main-content">
+        <!-- ─── DASHBOARD VIEW ─── -->
+        <div id="view-dashboard" class="view active">
+          <div class="page-header">
+            <h2>📊 Dashboard</h2>
+            <p>Vista general de todos tus repositorios de backup</p>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon blue">📦</div>
+              <div class="stat-info">
+                <h3 id="stat-repos">0</h3>
+                <p>Repositorios</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon green">✅</div>
+              <div class="stat-info">
+                <h3 id="stat-success">0</h3>
+                <p>Backups OK</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon yellow">❌</div>
+              <div class="stat-info">
+                <h3 id="stat-errors">0</h3>
+                <p>Con Errores</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon purple">⏳</div>
+              <div class="stat-info">
+                <h3 id="stat-pending">0</h3>
+                <p>Pendientes</p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              margin-bottom: 20px;
+            "
+          >
+            <h3 style="font-size: 18px">Repositorios</h3>
+            <button class="btn btn-primary" onclick="openNewRepoModal()">
+              <span>➕</span> Nuevo Repositorio
+            </button>
+          </div>
+
+          <div id="repos-grid" class="repos-grid">
+            <div class="empty-state" style="grid-column: 1 / -1">
+              <div class="spinner"></div>
+              <p style="margin-top: 16px">Cargando...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── BACKUP VIEW ─── -->
+        <div id="view-backup" class="view">
+          <div class="page-header">
+            <h2>⬆️ Backup</h2>
+            <p>Ejecutar una copia de seguridad bajo demanda</p>
+          </div>
+
+          <div class="card" style="max-width: 700px">
+            <div class="form-group">
+              <label class="form-label">Repositorio</label>
+              <select id="backup-repo-select" class="form-select">
+                <option value="">-- Seleccionar repositorio --</option>
+              </select>
+            </div>
+
+            <button
+              class="btn btn-success"
+              onclick="runBackup()"
+              style="width: 100%"
+            >
+              ▶ Iniciar Backup
+            </button>
+
+            <div style="margin-top: 24px">
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  margin-bottom: 8px;
+                "
+              >
+                <span class="form-label" style="margin: 0">Progreso</span>
+                <span
+                  id="backup-status"
+                  style="font-size: 12px; color: var(--text-muted)"
+                  >Esperando...</span
+                >
+              </div>
+              <div class="progress-bar">
+                <div
+                  id="backup-progress-fill"
+                  class="progress-fill"
+                  style="width: 0%"
+                ></div>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px">
+              <span class="form-label">Log de ejecución</span>
+              <div id="backup-log" class="log-output" style="margin-top: 8px">
+                Listo para iniciar backup...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── SNAPSHOTS VIEW ─── -->
+        <div id="view-snapshots" class="view">
+          <div class="page-header">
+            <h2>📋 Snapshots</h2>
+            <p>Listado de todas las revisiones de backup disponibles</p>
+          </div>
+
+          <div class="card" style="margin-bottom: 20px; max-width: 700px">
+            <div class="form-group" style="margin: 0">
+              <label class="form-label">Repositorio</label>
+              <div style="display: flex; gap: 10px">
+                <select
+                  id="snapshots-repo-select"
+                  class="form-select"
+                  onchange="loadSnapshots()"
+                >
+                  <option value="">-- Seleccionar repositorio --</option>
+                </select>
+                <button class="btn btn-ghost" onclick="loadSnapshots()">
+                  🔄
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="snapshots-list">
+            <div class="empty-state">
+              <div class="empty-icon">📋</div>
+              <h3>Selecciona un repositorio</h3>
+              <p>Elige un repositorio de la lista para ver sus snapshots.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── RESTORE VIEW ─── -->
+        <div id="view-restore" class="view">
+          <div class="page-header">
+            <h2>⬇️ Restaurar</h2>
+            <p>Recuperar archivos de un snapshot anterior</p>
+          </div>
+
+          <div class="card" style="max-width: 700px">
+            <form onsubmit="submitRestore(event)">
+              <div class="form-group">
+                <label class="form-label">Repositorio</label>
+                <select id="restore-repo-select" class="form-select" required>
+                  <option value="">-- Seleccionar repositorio --</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Número de Revisión</label>
+                <input
+                  type="number"
+                  id="restore-revision"
+                  class="form-input"
+                  placeholder="Ej: 3"
+                  min="1"
+                  required
+                />
+                <span class="form-hint"
+                  >Consulta la lista de snapshots para ver las revisiones
+                  disponibles</span
+                >
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width: 100%">
+                🔄 Restaurar
+              </button>
+            </form>
+
+            <div style="margin-top: 24px">
+              <span class="form-label">Estado</span>
+              <p
+                id="restore-status"
+                style="
+                  font-size: 13px;
+                  color: var(--text-muted);
+                  margin-top: 4px;
+                "
+              >
+                Esperando...
+              </p>
+            </div>
+
+            <div style="margin-top: 16px">
+              <span class="form-label">Log de restauración</span>
+              <div id="restore-log" class="log-output" style="margin-top: 8px">
+                Listo para restaurar...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── SETTINGS VIEW ─── -->
+        <div id="view-settings" class="view">
+          <div class="page-header">
+            <h2>⚙️ Configuración</h2>
+            <p>Ajustes generales de DupliManager</p>
+          </div>
+
+          <div class="card" style="max-width: 700px">
+            <form onsubmit="saveSettings(event)">
+              <div class="settings-section">
+                <h3>🔧 General</h3>
+                <div class="form-group">
+                  <label class="form-label">Ruta de Duplicacy CLI</label>
+                  <input
+                    type="text"
+                    id="setting-duplicacy-path"
+                    class="form-input"
+                    placeholder="C:\ruta\duplicacy.exe"
+                  />
+                  <span class="form-hint"
+                    >Ruta completa al binario duplicacy.exe</span
+                  >
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Puerto del Servidor</label>
+                  <input
+                    type="number"
+                    id="setting-port"
+                    class="form-input"
+                    value="8500"
+                  />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Idioma</label>
+                  <select id="setting-language" class="form-select">
+                    <option value="es">Español</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width: 100%">
+                💾 Guardar Configuración
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- ─── LOGS VIEW ─── -->
+        <div id="view-logs" class="view">
+          <div class="page-header">
+            <h2>📜 Logs del Sistema</h2>
+            <p>Registros de actividad de DupliManager</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px">
+            <div>
+              <h3 style="font-size: 14px; margin-bottom: 12px">
+                Archivos de Log
+              </h3>
+              <div id="log-files-list">
+                <div class="empty-state"><div class="spinner"></div></div>
+              </div>
+            </div>
+            <div>
+              <h3 style="font-size: 14px; margin-bottom: 12px">Contenido</h3>
+              <div
+                id="log-viewer"
+                class="log-output"
+                style="display: none; min-height: 400px"
+              ></div>
+              <div id="log-placeholder" class="empty-state">
+                <p>Selecciona un archivo de log para ver su contenido.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- ═══ NEW REPO MODAL ═══ -->
+    <div
+      id="modal-new-repo"
+      class="modal-overlay"
+      onclick="if (event.target === this) closeNewRepoModal();"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h3>➕ Nuevo Repositorio</h3>
+          <button class="modal-close" onclick="closeNewRepoModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <form id="repo-form" onsubmit="submitNewRepo(event)">
+            <div class="form-group">
+              <label class="form-label">Nombre del Repositorio</label>
+              <input
+                type="text"
+                name="repoName"
+                class="form-input"
+                placeholder="Ej: Documentos de trabajo"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Carpeta a respaldar</label>
+              <input
+                type="text"
+                name="repoPath"
+                class="form-input"
+                placeholder="Ej: C:\Users\Carlos\Documents"
+                required
+              />
+              <span class="form-hint"
+                >Ruta completa de la carpeta que deseas respaldar</span
+              >
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Snapshot ID</label>
+              <input
+                type="text"
+                name="snapshotId"
+                class="form-input"
+                placeholder="Ej: mi-pc-docs"
+                required
+              />
+              <span class="form-hint"
+                >Identificador único para este equipo/backup (sin
+                espacios)</span
+              >
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Storage (destino del backup)</label>
+              <input
+                type="text"
+                name="storageUrl"
+                class="form-input"
+                placeholder="Ej: D:\backups\storage o s3://mi-bucket/backups"
+                required
+              />
+              <span class="form-hint">
+                Ruta local o URL del almacenamiento. Ejemplos:<br />
+                • Local: D:\Backups\storage<br />
+                • S3: s3://nombre-bucket/ruta<br />
+                • B2: b2://nombre-bucket<br />
+                • SFTP: sftp://usuario@host/ruta
+              </span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Contraseña de cifrado (opcional)</label>
+              <input
+                type="password"
+                name="repoPassword"
+                class="form-input"
+                placeholder="Dejar vacío para no cifrar"
+              />
+              <span class="form-hint"
+                >Si se proporciona, todos los datos se cifrarán en el
+                storage</span
+              >
+            </div>
+
+            <div class="modal-footer" style="padding: 0; margin-top: 24px">
+              <button
+                type="button"
+                class="btn btn-ghost"
+                onclick="closeNewRepoModal()"
+              >
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">
+                🚀 Crear Repositorio
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TOAST CONTAINER ═══ -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ═══ SCRIPTS ═══ -->
+    <script src="/js/api.js"></script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>

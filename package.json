@@ -1,0 +1,16 @@
+{
+  "name": "duplimanager",
+  "version": "1.0.0",
+  "description": "Backup management software powered by Duplicacy CLI (FastAPI backend)",
+  "scripts": {
+    "start": "python -m server_py.main",
+    "dev": "python -m server_py.main"
+  },
+  "keywords": [
+    "backup",
+    "duplicacy",
+    "deduplication"
+  ],
+  "author": "",
+  "license": "ISC"
+}

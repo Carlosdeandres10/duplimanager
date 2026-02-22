@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Runtime / generated app data
+config/*.json
+logs/*.log
+!config/.gitkeep
+!logs/.gitkeep
+
+# Duplicacy binary (download locally)
+bin/duplicacy.exe
+
+# Node (only npm scripts used)
+node_modules/
+npm-debug.log*
+server/
+
+# OS / editor
+.DS_Store
+Thumbs.db
