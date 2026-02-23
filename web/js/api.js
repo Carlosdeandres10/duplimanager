@@ -10,8 +10,15 @@ const API = {
             headers: { 'Content-Type': 'application/json', ...opts.headers },
             ...opts
         });
-        const data = await response.json();
-        if (!data.ok) throw new Error(data.error || 'API Error');
+        let data = {};
+        try {
+            data = await response.json();
+        } catch {
+            data = {};
+        }
+        if (!response.ok || !data.ok) {
+            throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+        }
         return data;
     },
 
@@ -22,6 +29,13 @@ const API = {
 
     async getRepo(id) {
         return this._fetch(`/repos/${id}`);
+    },
+
+    async updateRepo(id, patch) {
+        return this._fetch(`/repos/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(patch)
+        });
     },
 
     async createRepo(repoData) {
@@ -35,11 +49,96 @@ const API = {
         return this._fetch(`/repos/${id}`, { method: 'DELETE' });
     },
 
+    async getStorages() {
+        return this._fetch('/storages');
+    },
+
+    async createStorage(payload) {
+        return this._fetch('/storages', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async updateStorage(id, payload) {
+        return this._fetch(`/storages/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async deleteStorage(id) {
+        return this._fetch(`/storages/${id}`, { method: 'DELETE' });
+    },
+
+    async getStorageSnapshots(id) {
+        return this._fetch(`/storages/${id}/snapshots`);
+    },
+
+    async getStorageSnapshotRevisions(storageId, snapshotId) {
+        const q = new URLSearchParams({ snapshot_id: snapshotId });
+        return this._fetch(`/storages/${storageId}/snapshot-revisions?${q.toString()}`);
+    },
+
+    async getStorageSnapshotFiles(storageId, snapshotId, revision) {
+        const q = new URLSearchParams({ snapshot_id: snapshotId, revision: String(revision) });
+        return this._fetch(`/storages/${storageId}/snapshot-files?${q.toString()}`);
+    },
+
+    async restoreFromStorage(storageId, payload) {
+        return this._fetch(`/storages/${storageId}/restore`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async pickFolder(start) {
+        const params = new URLSearchParams();
+        if (start) params.set('start', start);
+        const qs = params.toString();
+        return this._fetch(`/system/pick-folder${qs ? `?${qs}` : ''}`);
+    },
+
+    async listLocalItems(root, relative) {
+        const params = new URLSearchParams();
+        params.set('root', root);
+        if (relative) params.set('relative', relative);
+        return this._fetch(`/system/list-local-items?${params.toString()}`);
+    },
+
+    async testWasabiConnection(payload) {
+        return this._fetch('/system/test-wasabi', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async testWasabiWrite(payload) {
+        return this._fetch('/system/test-wasabi-write', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async detectWasabiSnapshots(payload) {
+        return this._fetch('/system/detect-wasabi-snapshots', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
     // ─── BACKUP ─────────────────────────────────────────
-    async startBackup(repoId, password) {
+    async startBackup(repoId, password, threads) {
         return this._fetch('/backup/start', {
             method: 'POST',
-            body: JSON.stringify({ repoId, password })
+            body: JSON.stringify({ repoId, password, threads })
+        });
+    },
+
+    async cancelBackup(repoId) {
+        return this._fetch('/backup/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ repoId })
         });
     },
 
@@ -69,11 +168,15 @@ const API = {
         return this._fetch(`/snapshots/${repoId}`);
     },
 
+    async getSnapshotFiles(repoId, revision) {
+        return this._fetch(`/snapshots/${repoId}/files?revision=${encodeURIComponent(revision)}`);
+    },
+
     // ─── RESTORE ────────────────────────────────────────
-    async restore(repoId, revision, overwrite, password) {
+    async restore(repoId, revision, overwrite, password, restorePath, patterns) {
         return this._fetch('/restore', {
             method: 'POST',
-            body: JSON.stringify({ repoId, revision, overwrite, password })
+            body: JSON.stringify({ repoId, revision, overwrite, password, restorePath, patterns })
         });
     },
 

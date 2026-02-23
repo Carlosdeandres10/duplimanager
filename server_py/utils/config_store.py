@@ -24,6 +24,7 @@ DEFAULTS = {
         }
     },
     "repositories.json": [],
+    "storages.json": [],
     "schedules.json": []
 }
 
@@ -75,4 +76,5 @@ class ConfigStore:
 # ─── Singletons ──────────────────────────────────────
 settings = ConfigStore("settings.json")
 repositories = ConfigStore("repositories.json")
+storages = ConfigStore("storages.json")
 schedules = ConfigStore("schedules.json")
