@@ -9,6 +9,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from server_py.utils.logger import get_logger
+
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 CONFIG_DIR.mkdir(exist_ok=True)
 
@@ -33,6 +35,7 @@ DEFAULTS = {
 }
 
 _db_lock = threading.Lock()
+logger = get_logger("ConfigStore")
 
 def _init_db():
     with _db_lock:

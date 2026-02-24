@@ -11,6 +11,9 @@ config/*.json
 logs/*.log
 !config/.gitkeep
 !logs/.gitkeep
+config/cache/
+server_py/config/cache/
+**/.duplicacy/
 
 # Duplicacy binary (download locally)
 bin/duplicacy.exe
@@ -28,4 +31,3 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
-
