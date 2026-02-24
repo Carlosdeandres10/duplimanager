@@ -45,6 +45,14 @@ const API = {
         });
     },
 
+    async validateRepo(repoData) {
+        return this._fetch('/repos/validate', {
+            method: 'POST',
+            body: JSON.stringify(repoData)
+        });
+    },
+
+
     async deleteRepo(id) {
         return this._fetch(`/repos/${id}`, { method: 'DELETE' });
     },

@@ -1,0 +1,15 @@
+{
+    "compression-level": 100,
+    "average-chunk-size": 4194304,
+    "max-chunk-size": 16777216,
+    "min-chunk-size": 1048576,
+    "fixed-nesting": true,
+    "DataShards": 0,
+    "ParityShards": 0,
+    "chunk-seed": "6475706c6963616379",
+    "hash-key": "6475706c6963616379",
+    "id-key": "6475706c6963616379",
+    "chunk-key": "",
+    "file-key": "",
+    "rsa-public-key": ""
+}

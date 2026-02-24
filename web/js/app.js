@@ -18,7 +18,6 @@ let restoreRevisionsCache = {};
 let restoreFilesCache = {};
 let newRepoContentState = { rootPath: '', selection: [] };
 let editRepoContentState = { rootPath: '', selection: [] };
-let newBackupAdvancedOpen = false;
 let backupIdPickerItems = [];
 let backupIdPickerSelected = '';
 let currentBackupRunRepoId = null;
@@ -87,7 +86,6 @@ function navigateTo(view) {
         case 'repositories': loadRepositoriesView(); break;
         case 'tasks':      loadTasksView(); break;
         case 'backup':     loadBackupView(); break;
-        case 'snapshots':  loadSnapshotsView(); break;
         case 'restore':    loadRestoreView(); break;
         case 'settings':   loadSettingsView(); break;
         case 'logs':       loadLogsView(); break;
@@ -128,10 +126,10 @@ function renderDashboard() {
         grid.innerHTML = `
             <div class="empty-state" style="grid-column: 1 / -1;">
                 <div class="empty-icon">📦</div>
-                <h3>Sin repositorios configurados</h3>
-                <p>Crea tu primer repositorio de backup para empezar a proteger tus datos.</p>
+                <h3>Sin backups configurados</h3>
+                <p>Crea tu primer backup para empezar a proteger tus datos.</p>
                 <button class="btn btn-primary" onclick="openNewRepoModal()">
-                    <span>➕</span> Nuevo Repositorio
+                    <span>➕</span> Nuevo Backup
                 </button>
             </div>
         `;
@@ -142,7 +140,7 @@ function renderDashboard() {
         <div class="repo-card" data-id="${repo.id}">
             <div class="repo-header">
                 <div>
-                    <div class="repo-name">${escapeHtml(repo.name)}</div>
+                <div class="repo-name">${escapeHtml(repo.snapshotId)}</div>
                     <div class="repo-path">${escapeHtml(repo.path)}</div>
                 </div>
                 ${renderStatusBadge(repo.lastBackupStatus)}
@@ -153,12 +151,8 @@ function renderDashboard() {
                     <span class="meta-value">${repo.lastBackup ? formatDate(repo.lastBackup) : 'Nunca'}</span>
                 </div>
                 <div class="meta-item">
-                    <span class="meta-label">Storage</span>
+                    <span class="meta-label">Repositorio</span>
                     <span class="meta-value">${escapeHtml(formatRepoStorageSummary(repo))}</span>
-                </div>
-                <div class="meta-item">
-                    <span class="meta-label">Snapshot ID</span>
-                    <span class="meta-value">${escapeHtml(repo.snapshotId)}</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Cifrado</span>
@@ -173,9 +167,6 @@ function renderDashboard() {
             <div class="repo-actions">
                 <button class="btn btn-success btn-sm" onclick="runBackup('${repo.id}')">
                     ▶ Backup
-                </button>
-                <button class="btn btn-ghost btn-sm" onclick="viewSnapshots('${repo.id}')">
-                    📋 Snapshots
                 </button>
                 <button class="btn btn-ghost btn-sm" onclick="confirmDeleteRepo('${repo.id}', '${escapeHtml(repo.name)}')">
                     🗑
@@ -249,7 +240,7 @@ function renderTasksTable() {
                         return `
                             <tr>
                                 <td>
-                                    <div><strong>${escapeHtml(repo.name || '—')}</strong></div>
+                                    <div><strong>${escapeHtml(repo.snapshotId || '—')}</strong></div>
                                     <div style="font-size:12px; color: var(--text-muted);">${escapeHtml(repo.path || '')}</div>
                                 </td>
                                 <td>${enabled ? '<span class="badge badge-success">✅ Activa</span>' : '<span class="badge badge-warning">⏸ Pausada</span>'}</td>
@@ -291,8 +282,8 @@ async function toggleTaskEnabled(repoId, enabled) {
     try {
         await API.updateRepo(repoId, patch);
         showToast(enabled ? '✅ Tarea activada' : '⏸ Tarea pausada', 'success');
-        await loadTasksView();
-        if (currentView === 'dashboard') await loadDashboard();
+        if (currentView === 'tasks') loadTasksView();
+        await loadDashboard();
     } catch (err) {
         showToast('❌ Error actualizando tarea: ' + err.message, 'error');
     }
@@ -327,8 +318,8 @@ function renderStoragesTable() {
         wrap.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">🗄️</div>
-                <h3>Sin storages</h3>
-                <p>Importa un storage Wasabi/local o se mostrarán aquí los detectados desde backups legacy.</p>
+                <h3>Sin repositorios</h3>
+                <p>Configura un repositorio Wasabi o local como destino para tus copias.</p>
             </div>
         `;
         return;
@@ -339,34 +330,33 @@ function renderStoragesTable() {
             <table>
                 <thead>
                     <tr>
-                        <th>Alias</th>
+                        <th>Nombre</th>
                         <th>Tipo</th>
                         <th>URL / Ruta</th>
-                        <th>Origen</th>
-                        <th>Backups</th>
-                        <th>Credenciales</th>
+                        <th>Conexión</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${storages.map(s => `
+                    ${storages.map(s => {
+                        return `
                         <tr>
-                            <td><strong>${escapeHtml(s.name || s.label || '—')}</strong></td>
+                            <td>
+                                <strong>${escapeHtml(s.name || s.label || '—')}</strong>
+                            </td>
                             <td>${escapeHtml(s.type || '—')}</td>
                             <td title="${escapeHtml(s.url || s.localPath || '')}">${escapeHtml(s.url || s.localPath || '—')}</td>
-                            <td>${s.source === 'managed' ? 'Importado' : 'Derivado (legacy)'}</td>
-                            <td>${s.linkedBackups ?? 0}</td>
-                            <td>${s.type === 'wasabi' ? `${s.hasWasabiCredentials ? 'Wasabi ✓' : 'Wasabi ✗'} · ${s.hasDuplicacyPassword ? 'Pwd Duplicacy ✓' : 'Pwd Duplicacy —'}` : '—'}</td>
+                            <td>${s.type === 'wasabi' ? `${s.hasWasabiCredentials ? 'Wasabi ✓' : 'Wasabi ✗'} · ${s.hasDuplicacyPassword ? 'Contraseña Duplicacy ✓' : 'Contraseña Duplicacy —'}` : '—'}</td>
                             <td>
                                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button class="btn btn-success btn-sm" onclick="startNewBackupWithStorage('${s.id}')">➕ Backup</button>
                                     ${s.type === 'wasabi' ? `<button class="btn btn-ghost btn-sm" onclick="detectSnapshotsFromStoredStorage('${s.id}')">🔎 IDs</button>` : ''}
-                                    ${s.source === 'managed' ? `<button class="btn btn-ghost btn-sm" onclick="openEditStorageModal('${s.id}')">✏️ Editar</button>` : ''}
-                                    ${s.source === 'managed' ? `<button class="btn btn-ghost btn-sm" onclick="confirmDeleteStorage('${s.id}', '${escapeHtml(s.name || s.label || 'Storage')}')">🗑</button>` : ''}
+                                    <button class="btn btn-ghost btn-sm" onclick="openEditStorageModal('${s.id}')">✏️ Editar</button>
+                                    <button class="btn btn-ghost btn-sm" onclick="confirmDeleteStorage('${s.id}', '${escapeHtml(s.name || s.label || 'Storage')}')">🗑</button>
                                 </div>
                             </td>
                         </tr>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         </div>
@@ -385,9 +375,9 @@ function setStorageModalMode(isEdit) {
     const dupPwdHint = document.getElementById('import-storage-duppwd-hint');
     const isManagedEdit = !!isEdit;
 
-    if (title) title.textContent = isManagedEdit ? '✏️ Editar Repositorio de destino' : '🗄️ Importar Storage';
-    if (submitBtn) submitBtn.innerHTML = isManagedEdit ? '💾 Guardar cambios' : '💾 Guardar Storage';
-    if (aliasHint) aliasHint.textContent = isManagedEdit ? 'Alias local del repositorio de destino en DupliManager.' : 'Nombre local del storage en DupliManager (puede ser nuevo).';
+    if (title) title.textContent = isManagedEdit ? '✏️ Editar Repositorio' : '🗄️ Nuevo Repositorio';
+    if (submitBtn) submitBtn.innerHTML = isManagedEdit ? '💾 Guardar cambios' : '💾 Guardar Repositorio';
+    if (aliasHint) aliasHint.textContent = isManagedEdit ? 'Alias local del repositorio en DupliManager.' : 'Nombre local del repositorio en DupliManager.';
     if (typeHint) typeHint.style.display = isManagedEdit ? 'block' : 'none';
     if (accessIdHint) accessIdHint.style.display = isManagedEdit ? 'block' : 'none';
     if (accessKeyHint) accessKeyHint.style.display = isManagedEdit ? 'block' : 'none';
@@ -411,7 +401,7 @@ function openImportStorageModal() {
 
 function openEditStorageModal(storageId) {
     const storage = (storages || []).find(s => s.id === storageId);
-    if (!storage) return showToast('Storage no encontrado', 'error');
+    if (!storage) return showToast('Repositorio no encontrado', 'error');
     if (storage.source !== 'managed') return showToast('Los storages legacy no se editan desde aquí', 'warning');
 
     const modal = document.getElementById('modal-import-storage');
@@ -481,7 +471,7 @@ async function submitImportStorage(e) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Guardando...';
         const result = await (isEdit ? API.updateStorage(storageId, payload) : API.createStorage(payload));
-        showToast(isEdit ? '✅ Repositorio de destino actualizado' : '✅ Storage guardado', 'success');
+        showToast(isEdit ? '✅ Repositorio actualizado' : '✅ Repositorio guardado', 'success');
         if (result?.warning) showToast('⚠️ ' + result.warning, 'warning');
         closeImportStorageModal();
         await loadStoragesView();
@@ -511,20 +501,21 @@ async function detectSnapshotsFromStoredStorage(storageId) {
         const result = await API.getStorageSnapshots(storageId);
         const snaps = result.snapshots || [];
         restoreStorageSnapshotsCache[storageId] = snaps;
-        if (!snaps.length) return showToast('No se encontraron Backup IDs', 'warning');
+        if (!snaps.length) return showToast('No se encontraron Snapshot IDs', 'warning');
         const lines = snaps.map(s => `${s.snapshotId} (${s.revisions || 0} rev, última #${s.latestRevision ?? '—'})`).join('\n');
-        showToast(`✅ ${snaps.length} Backup IDs detectados`, 'success');
-        alert(`Backup IDs detectados:\n\n${lines}`);
+        showToast(`✅ ${snaps.length} Snapshot IDs detectados`, 'success');
+        alert(`Snapshot IDs detectados:\n\n${lines}`);
     } catch (err) {
-        showToast('❌ Error detectando Backup IDs: ' + err.message, 'error');
+        showToast('❌ Error detectando Snapshot IDs: ' + err.message, 'error');
     }
 }
 
 async function confirmDeleteStorage(storageId, name) {
-    if (!confirm(`¿Eliminar storage "${name}"?\n\nNo se borrarán datos en Wasabi/local, solo la referencia en DupliManager.`)) return;
+    if (!confirm(`¿Eliminar el repositorio "${name}"?\n\nSolo se eliminará la conexión en DupliManager. Los datos en el destino no se tocarán.`)) return;
+
     try {
         await API.deleteStorage(storageId);
-        showToast('🗑 Storage eliminado', 'success');
+        showToast('🗑 Repositorio eliminado', 'success');
         await loadStoragesView();
     } catch (err) {
         showToast('❌ Error eliminando storage: ' + err.message, 'error');
@@ -591,21 +582,15 @@ function openNewRepoModal() {
     const testStatus = document.getElementById('wasabi-test-status');
     if (testStatus) testStatus.textContent = '';
     const detectedSelect = document.getElementById('detected-snapshot-select');
-    if (detectedSelect) detectedSelect.innerHTML = '<option value="">-- Selecciona un Snapshot ID detectado --</option>';
+    if (detectedSelect) detectedSelect.innerHTML = '<option value="">-- Selecciona un ID --</option>';
     const detectBtn = document.getElementById('btn-detect-wasabi-snapshots');
-    if (detectBtn) detectBtn.innerHTML = '🔎 Cargar Backup IDs';
-    const detectedHint = document.getElementById('detected-snapshot-hint');
-    if (detectedHint) {
-        detectedHint.textContent = 'En importación puedes cargar los Backup IDs (Snapshot IDs) existentes del storage.';
-    }
-    newBackupAdvancedOpen = false;
+    if (detectBtn) detectBtn.innerHTML = '🔎 Cargar IDs existentes';
     populateNewRepoStorageSelect();
     API.getStorages()
         .then(data => { storages = data.storages || []; populateNewRepoStorageSelect(); toggleNewRepoStorageSource(); })
         .catch(() => {});
     toggleNewRepoStorageSource();
     toggleNewRepoModeGuidance();
-    toggleDestinationFields();
 }
 
 function populateNewRepoStorageSelect() {
@@ -619,29 +604,8 @@ function populateNewRepoStorageSelect() {
         }).join('');
 }
 
-function applyNewBackupAdvancedVisibility() {
-    const selectedStorage = getSelectedImportedStorage();
-    const hasStorageRef = !!selectedStorage;
-    const showAdvanced = newBackupAdvancedOpen || !hasStorageRef;
-
-    ['new-repo-mode-wrap', 'new-repo-name-wrap', 'manual-destination-config-wrap', 'new-repo-password-wrap']
-        .forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.style.display = showAdvanced ? 'block' : 'none';
-        });
-
-    const btn = document.getElementById('btn-toggle-new-backup-advanced');
-    if (btn) {
-        btn.innerHTML = showAdvanced ? '⚙️ Ocultar opciones avanzadas' : '⚙️ Mostrar opciones avanzadas';
-    }
-}
-
-function toggleNewBackupAdvancedSection() {
-    newBackupAdvancedOpen = !newBackupAdvancedOpen;
-    applyNewBackupAdvancedVisibility();
-    toggleDestinationFields();
-    toggleNewRepoStorageSource();
-}
+// function applyNewBackupAdvancedVisibility() eliminated
+// function toggleNewBackupAdvancedSection() eliminated
 
 function getSelectedImportedStorage() {
     const select = document.getElementById('new-repo-storage-select');
@@ -651,17 +615,8 @@ function getSelectedImportedStorage() {
 }
 
 function autoFillNewBackupName(form) {
-    if (!form || !form.repoName) return;
-    if ((form.repoName.value || '').trim()) return;
-    const snapshotId = (form.snapshotId?.value || '').trim();
-    if (snapshotId) {
-        form.repoName.value = snapshotId;
-        return;
-    }
-    const p = (form.repoPath?.value || '').trim().replace(/[\\/]+$/, '');
-    if (!p) return;
-    const parts = p.split(/[\\/]/).filter(Boolean);
-    if (parts.length) form.repoName.value = parts[parts.length - 1];
+    // Legacy function, no longer used for alias but kept for structure if needed.
+    return;
 }
 
 function toggleNewRepoStorageSource() {
@@ -671,63 +626,12 @@ function toggleNewRepoStorageSource() {
     const hasStorageRef = !!selectedStorage;
     const hint = document.getElementById('new-repo-storage-hint');
     const modeWrap = document.getElementById('new-repo-mode-wrap');
-    const nameWrap = document.getElementById('new-repo-name-wrap');
     const nameHint = document.getElementById('new-repo-name-hint');
-    const destinationTypeSelect = document.getElementById('destination-type');
-    const manualDestinationWrap = document.getElementById('manual-destination-config-wrap');
-    const localContainer = document.getElementById('local-destination-fields');
-    const wasabiContainer = document.getElementById('wasabi-fields');
-
-    if (destinationTypeSelect) {
-        destinationTypeSelect.disabled = hasStorageRef;
-        if (hasStorageRef) {
-            destinationTypeSelect.value = selectedStorage.type === 'wasabi' ? 'wasabi' : 'local';
-        }
-    }
-    if (manualDestinationWrap) {
-        manualDestinationWrap.style.display = hasStorageRef ? 'none' : 'block';
-    }
-    if (modeWrap) modeWrap.style.display = hasStorageRef ? 'none' : 'block';
-    if (nameWrap) nameWrap.style.display = hasStorageRef ? 'none' : 'block';
-    if (nameHint) {
-        nameHint.textContent = hasStorageRef
-            ? 'Se generará automáticamente a partir del Backup ID si lo dejas vacío.'
-            : 'Alias local en DupliManager (opcional).';
-    }
-    if (localContainer) {
-        localContainer.style.display = hasStorageRef ? 'none' : (((destinationTypeSelect?.value || 'local') === 'local') ? 'block' : 'none');
-        localContainer.style.opacity = '1';
-        localContainer.querySelectorAll('input,button,select').forEach(el => {
-            if (el.name === 'localStoragePath') {
-                el.disabled = hasStorageRef || ((destinationTypeSelect?.value || 'local') !== 'local');
-                if (hasStorageRef) el.removeAttribute('required');
-            } else {
-                el.disabled = hasStorageRef;
-            }
-        });
-    }
-    if (wasabiContainer) {
-        wasabiContainer.style.display = hasStorageRef ? 'none' : (((destinationTypeSelect?.value || 'local') === 'wasabi') ? 'block' : 'none');
-        wasabiContainer.style.opacity = '1';
-        wasabiContainer.querySelectorAll('input,button,select').forEach(el => {
-            if (['wasabiEndpoint','wasabiRegion','wasabiBucket','wasabiDirectory','wasabiAccessId','wasabiAccessKey'].includes(el.name)) {
-                el.disabled = hasStorageRef || ((destinationTypeSelect?.value || 'local') !== 'wasabi');
-                if (hasStorageRef) el.removeAttribute('required');
-            } else if (el.id !== 'btn-detect-wasabi-snapshots') {
-                el.disabled = hasStorageRef;
-            }
-        });
-    }
     if (hint) {
         hint.textContent = hasStorageRef
-            ? `Se usará el storage guardado "${selectedStorage.name || selectedStorage.label || 'Storage'}". Solo debes indicar carpeta origen y crear/elegir un Backup ID.`
-            : 'No hay storage guardado seleccionado. Abre Opciones avanzadas para configurar destino manual (local o Wasabi).';
+            ? `Se usará el destino "${selectedStorage.name || selectedStorage.label || 'Storage'}".`
+            : 'Selecciona un destino para continuar.';
     }
-    if (!hasStorageRef) {
-        newBackupAdvancedOpen = true;
-    }
-    applyNewBackupAdvancedVisibility();
-    if (hasStorageRef) autoFillNewBackupName(form);
     toggleNewRepoModeGuidance();
 }
 
@@ -757,8 +661,8 @@ function renderRepositoriesTable() {
         wrap.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">📦</div>
-                <h3>Sin repositorios</h3>
-                <p>Crea un repositorio para ver aquí el origen y el destino de la copia.</p>
+                <h3>Sin backups configurados</h3>
+                <p>Añade un nuevo backup para empezar.</p>
             </div>
         `;
         return;
@@ -769,11 +673,10 @@ function renderRepositoriesTable() {
             <table>
                 <thead>
                     <tr>
-                        <th>Nombre</th>
+                        <th>Backup ID</th>
                         <th>Origen</th>
                         <th>Destino</th>
                         <th>Tipo</th>
-                        <th>Snapshot ID</th>
                         <th>Estado</th>
                         <th>Acciones</th>
                     </tr>
@@ -783,18 +686,16 @@ function renderRepositoriesTable() {
                         const primary = getPrimaryStorage(repo);
                         return `
                             <tr>
-                                <td><strong>${escapeHtml(repo.name)}</strong></td>
-                                <td title="${escapeHtml(repo.path || '')}">${escapeHtml(repo.path || '—')}</td>
+                                <td><strong>${escapeHtml(repo.snapshotId)}</strong></td>
+                                <td title="${escapeHtml(repo.path)}"><code style="font-size:11px;">${escapeHtml(repo.path)}</code></td>
                                 <td title="${escapeHtml((primary && primary.url) || repo.storageUrl || '')}">${escapeHtml((primary && primary.url) || repo.storageUrl || '—')}</td>
                                 <td>${escapeHtml(primary ? (primary.label || primary.type || '—') : '—')}</td>
-                                <td>${escapeHtml(repo.snapshotId || '—')}</td>
                                 <td>${renderStatusBadge(repo.lastBackupStatus)}</td>
                                 <td>
                                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                        <button class="btn btn-ghost btn-sm" onclick="openEditRepoModal('${repo.id}')">✏️ Editar</button>
+                                        <button class="btn btn-ghost btn-sm" onclick="openEditRepoModal('${repo.id}')">✏️</button>
                                         <button class="btn btn-success btn-sm" onclick="runBackup('${repo.id}')">▶ Backup</button>
-                                        <button class="btn btn-ghost btn-sm" onclick="viewSnapshots('${repo.id}')">📋</button>
-                                        <button class="btn btn-ghost btn-sm" onclick="confirmDeleteRepo('${repo.id}', '${escapeHtml(repo.name)}')">🗑</button>
+                                        <button class="btn btn-ghost btn-sm" onclick="confirmDeleteRepo('${repo.id}', '${escapeHtml(repo.snapshotId)}')">🗑</button>
                                     </div>
                                 </td>
                             </tr>
@@ -803,23 +704,92 @@ function renderRepositoriesTable() {
                 </tbody>
             </table>
         </div>
-    `;
+`;
+}
+
+async function checkNewRepoConfig() {
+    const form = document.getElementById('repo-form');
+    if (!form) return;
+
+    const btn = document.getElementById('btn-validate-new-repo');
+    const status = document.getElementById('new-repo-validation-status');
+
+    const snapshotId = (form.snapshotId.value || '').trim();
+    if (!snapshotId) {
+        showToast('El Snapshot ID es obligatorio para validar', 'warning');
+        form.snapshotId.focus();
+        return;
+    }
+
+    const data = {
+        name: snapshotId,
+        path: form.repoPath.value,
+        snapshotId,
+        importExisting: (form.repoMode?.value || 'create') === 'import',
+        storageId: (form.storageId?.value || '').trim() || undefined,
+        contentSelection: resolveRepoContentSelectionForSubmit('new', form.repoPath.value),
+    };
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Validando...';
+    }
+    if (status) {
+        status.style.display = 'block';
+        status.style.background = 'rgba(0,0,0,0.05)';
+        status.textContent = 'Validando configuración con Duplicacy...';
+    }
+
+    try {
+        const result = await API.validateRepo(data);
+        if (result.ok) {
+            if (status) {
+                status.style.background = 'var(--accent-green-glow)';
+                status.style.color = 'var(--accent-green)';
+                status.textContent = '✅ ' + (result.message || 'Configuración válida');
+            }
+            showToast('✅ Configuración válida', 'success');
+        } else {
+            if (status) {
+                status.style.background = 'var(--accent-red-glow)';
+                status.style.color = 'var(--accent-red)';
+                status.textContent = '❌ Error: ' + (result.detail || 'Fallo desconocido');
+            }
+            showToast('❌ Error de validación: ' + (result.detail || 'Fallo'), 'error');
+        }
+    } catch (err) {
+        if (status) {
+            status.style.background = 'var(--accent-red-glow)';
+            status.style.color = 'var(--accent-red)';
+            status.textContent = '❌ Error: ' + err.message;
+        }
+        showToast('❌ Error: ' + err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔍 Verificar Configuración';
+        }
+    }
 }
 
 function closeNewRepoModal() {
     document.getElementById('modal-new-repo').classList.remove('show');
+    const status = document.getElementById('new-repo-validation-status');
+    if (status) {
+        status.style.display = 'none';
+        status.textContent = '';
+    }
 }
 
 function openEditRepoModal(repoId) {
     const repo = repos.find(r => r.id === repoId);
-    if (!repo) return showToast('Repositorio no encontrado', 'error');
+    if (!repo) return showToast('Backup no encontrado', 'error');
 
     const form = document.getElementById('edit-repo-form');
     const primary = getPrimaryStorage(repo);
     const isWasabi = primary && primary.type === 'wasabi';
 
     form.repoId.value = repo.id;
-    form.repoName.value = repo.name || '';
     form.repoPath.value = repo.path || '';
     form.snapshotId.value = repo.snapshotId || '';
     form.destinationType.value = isWasabi ? 'wasabi' : 'local';
@@ -928,7 +898,7 @@ async function submitEditRepo(e) {
     const isWasabi = destinationType === 'wasabi';
 
     const payload = {
-        name: form.repoName.value,
+        name: form.snapshotId.value,
         path: form.repoPath.value,
         snapshotId: form.snapshotId.value,
         destinationType,
@@ -947,7 +917,7 @@ async function submitEditRepo(e) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Guardando...';
         const result = await API.updateRepo(form.repoId.value, payload);
-        showToast('✅ Repositorio actualizado', 'success');
+        showToast('✅ Backup actualizado', 'success');
         if (result.warning) showToast('⚠️ ' + result.warning, 'warning');
         closeEditRepoModal();
         if (currentView === 'repositories') {
@@ -956,6 +926,7 @@ async function submitEditRepo(e) {
         if (currentView === 'dashboard') {
             await loadDashboard();
         }
+        if (currentView === 'tasks') loadTasksView();
     } catch (err) {
         showToast('❌ Error: ' + err.message, 'error');
     } finally {
@@ -972,43 +943,28 @@ async function submitNewRepo(e) {
     btn.innerHTML = '<span class="spinner"></span> Inicializando...';
 
     try {
-        autoFillNewBackupName(form);
-        const destinationType = form.destinationType.value || 'local';
-        const isWasabi = destinationType === 'wasabi';
         const repoMode = (form.repoMode?.value || 'create');
         const importExisting = repoMode === 'import';
         const snapshotId = (form.snapshotId.value || '').trim();
         if (!snapshotId) {
             const msg = importExisting
-                ? 'Detecta o escribe un Snapshot ID (Backup ID) antes de importar'
+                ? 'Detecta o escribe un Snapshot ID antes de continuar'
                 : 'El Snapshot ID es obligatorio';
             showToast(msg, 'warning');
             form.snapshotId.focus();
             return;
         }
-        const backupName = (form.repoName.value || '').trim() || snapshotId;
         const data = {
-            name: backupName,
+            name: snapshotId,
             path: form.repoPath.value,
             snapshotId,
             importExisting,
             storageId: (form.storageId?.value || '').trim() || undefined,
-            destinationType,
-            localStoragePath: destinationType === 'local' ? form.localStoragePath.value : undefined,
-            wasabiEnabled: isWasabi, // compat backend antiguo
-            wasabiEndpoint: isWasabi ? form.wasabiEndpoint.value : undefined,
-            wasabiRegion: isWasabi ? form.wasabiRegion.value : undefined,
-            wasabiBucket: isWasabi ? form.wasabiBucket.value : undefined,
-            wasabiDirectory: isWasabi ? form.wasabiDirectory.value : undefined,
-            wasabiAccessId: isWasabi ? form.wasabiAccessId.value : undefined,
-            wasabiAccessKey: isWasabi ? form.wasabiAccessKey.value : undefined,
-            password: form.repoPassword.value || undefined,
-            encrypt: form.repoPassword.value ? true : undefined,
             contentSelection: resolveRepoContentSelectionForSubmit('new', form.repoPath.value),
         };
 
         await API.createRepo(data);
-        showToast(importExisting ? '✅ Backup importado exitosamente' : '✅ Backup creado exitosamente', 'success');
+        showToast(importExisting ? '✅ Backup vinculado exitosamente' : '✅ Backup creado exitosamente', 'success');
         closeNewRepoModal();
         loadDashboard();
 
@@ -1017,39 +973,11 @@ async function submitNewRepo(e) {
     } finally {
         btn.disabled = false;
         const isImport = (form.repoMode?.value || 'create') === 'import';
-        btn.innerHTML = isImport ? '📥 Importar Backup' : '🚀 Crear Backup';
+        btn.innerHTML = isImport ? '🚀 Vincular Backup' : '🚀 Crear Backup';
     }
 }
 
-function toggleDestinationFields() {
-    const destinationType = document.getElementById('destination-type')?.value || 'local';
-    const isWasabi = destinationType === 'wasabi';
-    const wasabiContainer = document.getElementById('wasabi-fields');
-    const localContainer = document.getElementById('local-destination-fields');
 
-    if (wasabiContainer) {
-        wasabiContainer.style.display = isWasabi ? 'block' : 'none';
-        wasabiContainer.querySelectorAll('input').forEach(input => {
-            input.disabled = !isWasabi;
-            const isRequired = ['wasabiEndpoint', 'wasabiRegion', 'wasabiBucket', 'wasabiAccessId', 'wasabiAccessKey'].includes(input.name);
-            if (isWasabi && isRequired) input.setAttribute('required', 'required');
-            if (!isWasabi) input.removeAttribute('required');
-        });
-    }
-
-    if (localContainer) {
-        localContainer.style.display = isWasabi ? 'none' : 'block';
-        localContainer.querySelectorAll('input').forEach(input => {
-            input.disabled = isWasabi;
-            if (isWasabi) {
-                input.removeAttribute('required');
-            } else {
-                input.setAttribute('required', 'required');
-            }
-        });
-    }
-    toggleNewRepoModeGuidance();
-}
 
 function toggleNewRepoModeGuidance() {
     const form = document.getElementById('repo-form');
@@ -1057,53 +985,31 @@ function toggleNewRepoModeGuidance() {
     const mode = form.repoMode?.value || 'create';
     const isImport = mode === 'import';
     const selectedStorage = getSelectedImportedStorage();
-    const isWasabi = selectedStorage ? selectedStorage.type === 'wasabi' : ((form.destinationType?.value || 'local') === 'wasabi');
+    const isWasabi = selectedStorage ? (selectedStorage.type === 'wasabi') : false;
     const hint = document.getElementById('new-repo-mode-hint');
-    const passwordHint = document.getElementById('new-repo-password-hint');
     const submitBtn = document.getElementById('btn-submit-new-repo');
     const detectWrap = document.getElementById('detect-snapshot-wrap');
-    const detectBtn = document.getElementById('btn-detect-wasabi-snapshots');
     const snapshotInput = form.snapshotId;
 
     if (hint) {
-        if (isImport && selectedStorage) {
-            hint.textContent = 'Selecciona un Backup ID existente del storage guardado (o escríbelo manualmente si lo conoces).';
-        } else if (isImport && isWasabi) {
-            hint.textContent = 'Usa un Backup ID existente en Wasabi. Puedes cargar los IDs del storage y, si está cifrado, poner la contraseña de Duplicacy.';
-        } else if (isImport) {
-            hint.textContent = 'Usa un Backup ID existente. Si es Wasabi, puedes detectarlo automáticamente.';
+        if (isImport) {
+            hint.textContent = 'Se usará un ID existente en el storage para continuar el historial.';
         } else {
-            hint.textContent = selectedStorage
-                ? 'Usa el storage guardado y crea un Backup ID nuevo (o reutiliza uno existente si quieres continuar historial).'
-                : 'Crea un backup nuevo y lo vincula a esta carpeta origen.';
-        }
-    }
-    if (passwordHint) {
-        if ((isImport || selectedStorage) && isWasabi) {
-            passwordHint.textContent = 'Si el storage/backup remoto estaba cifrado, aquí debes poner la contraseña de Duplicacy (no la de Wasabi).';
-        } else {
-            passwordHint.textContent = 'Si se proporciona, todos los datos se cifrarán en el storage';
+            hint.textContent = 'Se creará un identificador nuevo para este backup.';
         }
     }
     if (submitBtn) {
-        submitBtn.innerHTML = isImport ? '📥 Importar Backup' : '🚀 Crear Backup';
-    }
-    if (detectBtn) {
-        detectBtn.innerHTML = selectedStorage ? '🔎 Cargar Backup IDs del storage' : '🔎 Detectar Backup IDs en Wasabi';
+        submitBtn.innerHTML = isImport ? '🚀 Vincular Backup' : '🚀 Crear Backup';
     }
     if (detectWrap) {
-        detectWrap.style.display = (isImport && (isWasabi || !!selectedStorage)) ? 'block' : 'none';
+        detectWrap.style.display = (isImport && isWasabi) ? 'block' : 'none';
     }
     if (snapshotInput) {
-        snapshotInput.required = !isImport;
-        snapshotInput.placeholder = isImport ? 'Carga o escribe el Backup ID (Snapshot ID)' : 'Ej: mi-pc-docs';
+        snapshotInput.placeholder = isImport ? 'Escribe o busca el ID' : 'Ej: mi-pc-docs';
     }
 }
 
-async function pickLocalStorageFolder() {
-    const input = document.querySelector('#repo-form input[name="localStoragePath"]');
-    await pickFolderIntoInput(input);
-}
+
 
 async function pickRepoSourceFolder() {
     const input = document.querySelector('#repo-form input[name="repoPath"]');
@@ -1197,7 +1103,7 @@ function resetRepoContentSelection(target) {
         rootPath: rootPath || '',
         selection: [],
     });
-    showToast('Se respaldará todo el origen para este repositorio', 'info');
+    showToast('Se respaldará todo el origen para este backup', 'info');
 }
 
 function normalizeSelectionPath(path, isDir = false) {
@@ -1225,7 +1131,7 @@ function normalizeSelectionArray(paths) {
 async function openRepoContentSelector(target) {
     const rootPath = getRepoSourcePathForTarget(target);
     if (!rootPath) {
-        showToast('Selecciona primero la carpeta origen del repositorio', 'warning');
+        showToast('Selecciona primero la carpeta origen del backup', 'warning');
         return;
     }
 
@@ -1450,17 +1356,16 @@ function saveContentSelectorSelection() {
 function getWasabiFormPayload() {
     const form = document.getElementById('repo-form');
     if (!form) return { form: null, payload: null };
-    return {
-        form,
-        payload: {
-            endpoint: (form.wasabiEndpoint.value || '').trim(),
-            region: (form.wasabiRegion.value || '').trim(),
-            bucket: (form.wasabiBucket.value || '').trim(),
-            directory: (form.wasabiDirectory.value || '').trim(),
-            accessId: (form.wasabiAccessId.value || '').trim(),
-            accessKey: form.wasabiAccessKey.value || ''
-        }
+    
+    const payload = {
+        endpoint: (form.wasabiEndpoint?.value || '').trim(),
+        region: (form.wasabiRegion?.value || '').trim(),
+        bucket: (form.wasabiBucket?.value || '').trim(),
+        directory: (form.wasabiDirectory?.value || '').trim(),
+        accessId: (form.wasabiAccessId?.value || '').trim(),
+        accessKey: form.wasabiAccessKey?.value || ''
     };
+    return { form, payload };
 }
 
 function applyDetectedSnapshotId() {
@@ -1469,7 +1374,7 @@ function applyDetectedSnapshotId() {
     if (!form || !select || !select.value) return;
     form.snapshotId.value = select.value;
     if (form.repoMode) form.repoMode.value = 'import';
-    autoFillNewBackupName(form);
+    
     toggleNewRepoModeGuidance();
 }
 
@@ -1485,8 +1390,8 @@ function openBackupIdPickerModal(items, hintText) {
     const hint = document.getElementById('backup-id-picker-hint');
     if (hint) {
         hint.textContent = hintText || (backupIdPickerItems.length
-            ? `Se detectaron ${backupIdPickerItems.length} Backup IDs.`
-            : 'No hay Backup IDs para mostrar.');
+            ? `Se detectaron ${backupIdPickerItems.length} Snapshot IDs.`
+            : 'No hay Snapshot IDs para mostrar.');
     }
     document.getElementById('modal-backup-id-picker')?.classList.add('show');
     renderBackupIdPickerList();
@@ -1554,10 +1459,10 @@ function applyBackupIdFromPicker() {
     if (form?.snapshotId) form.snapshotId.value = backupIdPickerSelected;
     if (select) select.value = backupIdPickerSelected;
     if (form?.repoMode) form.repoMode.value = 'import';
-    autoFillNewBackupName(form);
+    
     toggleNewRepoModeGuidance();
     closeBackupIdPickerModal();
-    showToast(`✅ Backup ID seleccionado: ${backupIdPickerSelected}`, 'success');
+    showToast(`✅ Snapshot ID seleccionado: ${backupIdPickerSelected}`, 'success');
 }
 
 async function openBackupIdPickerFromNewBackup() {
@@ -1592,10 +1497,10 @@ async function detectWasabiSnapshotIds(openPickerIfMultiple = false) {
     const selectedStorage = getSelectedImportedStorage();
     const isWasabi = selectedStorage ? selectedStorage.type === 'wasabi' : ((form.destinationType?.value || 'local') === 'wasabi');
     if (!isImport) {
-        return showToast('Usa modo "Usar Backup ID existente" para cargar Backup IDs', 'warning');
+        return showToast('Usa modo "Usar Snapshot ID existente" para cargar Snapshot IDs', 'warning');
     }
     if (!selectedStorage && !isWasabi) {
-        return showToast('Selecciona un storage guardado o usa destino Wasabi para detectar Backup IDs', 'warning');
+        return showToast('Selecciona un storage guardado o usa destino Wasabi para detectar Snapshot IDs', 'warning');
     }
 
     const btn = document.getElementById('btn-detect-wasabi-snapshots');
@@ -1655,8 +1560,8 @@ async function detectWasabiSnapshotIds(openPickerIfMultiple = false) {
 
     const detectPayload = {
         ...payload,
-        directory: (form.wasabiDirectory.value || '').trim(),
-        password: form.repoPassword.value || '',
+        directory: (form.wasabiDirectory?.value || '').trim(),
+        password: '', // Password is no longer in this form
     };
     const required = ['endpoint', 'region', 'bucket', 'accessId', 'accessKey'];
     const missing = required.filter(k => !detectPayload[k]);
@@ -1792,7 +1697,7 @@ async function loadBackupView() {
         repos = data.repos || [];
         const select = document.getElementById('backup-repo-select');
         const threadsInput = document.getElementById('backup-threads');
-        select.innerHTML = '<option value="">-- Seleccionar repositorio --</option>' +
+        select.innerHTML = '<option value="">-- Seleccionar backup --</option>' +
             repos.map(r => `<option value="${r.id}">${escapeHtml(r.name)} — ${escapeHtml(r.path)}</option>`).join('');
         if (!select.value) select.value = '';
         if (threadsInput) {
@@ -1801,7 +1706,7 @@ async function loadBackupView() {
         }
         updateBackupRunButtonState();
     } catch (err) {
-        showToast('Error cargando repos', 'error');
+        showToast('Error cargando backups', 'error');
     }
 }
 
@@ -1812,7 +1717,7 @@ function updateBackupRunButtonState(isRunning = false) {
     if (!btn) return;
     const hasRepo = !!(select?.value || '').trim();
     btn.disabled = isRunning || !hasRepo;
-    btn.title = hasRepo ? '' : 'Selecciona un repositorio para iniciar el backup';
+    btn.title = hasRepo ? '' : 'Selecciona un backup para iniciar el backup';
     if (cancelBtn) {
         cancelBtn.disabled = !isRunning || !currentBackupRunRepoId;
         cancelBtn.title = (!isRunning || !currentBackupRunRepoId) ? 'No hay backup en ejecución' : '';
@@ -1843,7 +1748,7 @@ async function runBackup(repoId) {
     if (!repoId) {
         // If called from backup view, get selected repo
         repoId = document.getElementById('backup-repo-select')?.value;
-        if (!repoId) return showToast('Selecciona un repositorio', 'warning');
+        if (!repoId) return showToast('Selecciona un backup', 'warning');
     }
 
     const logOutput = document.getElementById('backup-log');
@@ -1862,7 +1767,7 @@ async function runBackup(repoId) {
 
     if (logOutput) logOutput.textContent = 'Iniciando backup...\n';
     if (logOutput && repo) {
-        logOutput.textContent += `Repositorio: ${repo.name || repoId}\n`;
+        logOutput.textContent += `Backup: ${repo.name || repoId}\n`;
         logOutput.textContent += `Origen: ${repo.path || '—'}\n`;
         logOutput.textContent += `Destino: ${(primaryStorage && primaryStorage.url) || repo.storageUrl || '—'}\n`;
         if (Array.isArray(repo.contentSelection) && repo.contentSelection.length) {
@@ -1991,80 +1896,6 @@ async function runBackup(repoId) {
     }
 }
 
-// ─── SNAPSHOTS ──────────────────────────────────────────
-async function loadSnapshotsView() {
-    try {
-        const data = await API.getRepos();
-        repos = data.repos || [];
-        const select = document.getElementById('snapshots-repo-select');
-        if (select) {
-            select.innerHTML = '<option value="">-- Seleccionar repositorio --</option>' +
-                repos.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
-        }
-    } catch (err) {
-        showToast('Error', 'error');
-    }
-}
-
-function viewSnapshots(repoId) {
-    navigateTo('snapshots');
-    setTimeout(() => {
-        const select = document.getElementById('snapshots-repo-select');
-        if (select) {
-            select.value = repoId;
-            loadSnapshots();
-        }
-    }, 100);
-}
-
-async function loadSnapshots() {
-    const repoId = document.getElementById('snapshots-repo-select')?.value;
-    const container = document.getElementById('snapshots-list');
-    if (!repoId || !container) return;
-
-    container.innerHTML = '<div class="empty-state"><div class="spinner"></div><p>Cargando snapshots...</p></div>';
-
-    try {
-        const data = await API.getSnapshots(repoId);
-        const snapshots = data.snapshots || [];
-
-        if (snapshots.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><h3>Sin snapshots</h3><p>Este repositorio aún no tiene backups realizados.</p></div>';
-            return;
-        }
-
-        container.innerHTML = `
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Revisión</th>
-                            <th>Snapshot ID</th>
-                            <th>Fecha de Creación</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${snapshots.map(s => `
-                            <tr>
-                                <td><strong>#${s.revision}</strong></td>
-                                <td>${escapeHtml(s.id)}</td>
-                                <td>${escapeHtml(s.createdAt)}</td>
-                                <td>
-                                    <button class="btn btn-ghost btn-sm" onclick="restoreFromSnapshot('${repoId}', ${s.revision})">
-                                        🔄 Restaurar
-                                    </button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    } catch (err) {
-        container.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
-    }
-}
 
 // ─── RESTORE ────────────────────────────────────────────
 async function loadRestoreView() {
@@ -2144,11 +1975,10 @@ function populateRestoreStorageSelect() {
     const prev = select.value || '';
     const options = (storages || []).map(s => {
         const typeLabel = (s.type || '').toLowerCase() === 'wasabi' ? 'Wasabi' : 'Local';
-        const originLabel = s.source === 'managed' ? 'Importado' : 'Derivado';
-        const label = `${s.name || s.label || 'Destino'} · ${typeLabel} · ${originLabel}`;
+        const label = `${s.name || s.label || 'Repositorio'} (${typeLabel})`;
         return `<option value="${escapeHtml(s.id)}">${escapeHtml(label)}</option>`;
     });
-    select.innerHTML = '<option value="">-- Seleccionar repositorio de destino --</option>' + options.join('');
+    select.innerHTML = '<option value="">-- Seleccionar destino --</option>' + options.join('');
     if (prev && (storages || []).some(s => s.id === prev)) {
         select.value = prev;
     }
@@ -2185,6 +2015,11 @@ function populateRestoreBackupSelect() {
     if (prev && canRestorePrev) {
         select.value = prev;
     }
+
+    const wrap = document.getElementById('restore-repo-wrap');
+    if (wrap) {
+        wrap.style.display = (localOpts.length || remoteOpts.length) ? 'block' : 'none';
+    }
 }
 
 async function onRestoreStorageChange() {
@@ -2213,20 +2048,26 @@ async function onRestoreStorageChange() {
         }
     }
     populateRestoreBackupSelect();
+    
+    let autoSelected = false;
     if (backupSelect) {
         const realOptions = Array.from(backupSelect.options).filter(o => o.value);
         if (realOptions.length === 1) {
             backupSelect.value = realOptions[0].value;
+            autoSelected = true;
             onRestoreRepoChange();
         }
     }
     const targetInput = document.getElementById('restore-target-path');
     if (targetInput) targetInput.value = '';
-    const revisionList = document.getElementById('restore-revision-list');
-    if (revisionList) revisionList.innerHTML = '<option value="">-- Selecciona un backup primero --</option>';
-    const hint = document.getElementById('restore-revision-hint');
-    if (hint) hint.textContent = 'Selecciona un backup del destino elegido para consultar revisiones.';
-    resetRestorePartialSelection();
+    
+    if (!autoSelected) {
+        const revisionList = document.getElementById('restore-revision-list');
+        if (revisionList) revisionList.innerHTML = '<option value="">-- Selecciona un backup primero --</option>';
+        const hint = document.getElementById('restore-revision-hint');
+        if (hint) hint.textContent = 'Selecciona un backup del destino elegido para consultar revisiones.';
+        resetRestorePartialSelection();
+    }
 }
 
 function onRestoreRepoChange() {
@@ -2312,8 +2153,11 @@ function onRestoreRevisionChange() {
 
 async function loadRestoreFilesForSelectedRevision() {
     const ctx = getRestoreSelectionContext();
-    const revision = parseInt(document.getElementById('restore-revision-list')?.value || '', 10);
+    const list = document.getElementById('restore-revision-list');
+    const revision = parseInt(list?.value || '', 10);
     const pathHint = document.getElementById('restore-path-hint');
+
+    console.log('[Restore] Loading files for:', { ctx, revision });
 
     if (!ctx.kind || !revision) {
         resetRestorePartialSelection();
@@ -2950,18 +2794,18 @@ function parseStructuredLogLine(rawLine) {
 
 // ─── DELETE REPO ────────────────────────────────────────
 async function confirmDeleteRepo(id, name) {
-    if (!confirm(`¿Eliminar repositorio "${name}" de la configuración?\n\n⚠️ Esto NO borra los datos de backup, solo elimina la configuración de DupliManager.`)) return;
+    if (!confirm(`¿Eliminar la tarea de backup "${name}"?\n\nEsto solo borrará la configuración del backup en DupliManager. No se tocarán tus datos ni los snapshots ya subidos.`)) return;
 
     try {
         await API.deleteRepo(id);
-        showToast('🗑 Repositorio eliminado de la configuración', 'success');
+        showToast('🗑 Backup eliminado', 'success');
         if (currentView === 'repositories') {
             loadRepositoriesView();
         } else {
             loadDashboard();
         }
     } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+        showToast('❌ Error: ' + err.message, 'error');
     }
 }
 

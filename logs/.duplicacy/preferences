@@ -1,0 +1,16 @@
+[
+    {
+        "name": "default",
+        "id": "datos",
+        "repository": "",
+        "storage": "wasabi://eu-central-1@s3.eu-central-1.wasabisys.com/acesgal/backup",
+        "encrypted": true,
+        "no_backup": false,
+        "no_restore": false,
+        "no_save_password": false,
+        "nobackup_file": "",
+        "keys": null,
+        "filters": "",
+        "exclude_by_attribute": false
+    }
+]

@@ -271,6 +271,11 @@ body {
   font-weight: 600;
 }
 
+.badge-sm {
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
 .badge-success {
   background: var(--accent-green-glow);
   color: var(--accent-green);

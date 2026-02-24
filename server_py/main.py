@@ -6,6 +6,7 @@ import hmac
 import time
 import signal
 import tempfile
+import json
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -150,8 +151,24 @@ active_backup_processes: Dict[str, Any] = {}
 scheduler_task: Optional[asyncio.Task] = None
 scheduler_running: bool = False
 FIXED_DUPLICACY_THREADS = 16
-REMOTE_LIST_CACHE_TTL_SECONDS = 300
-remote_storage_list_cache: Dict[str, Dict[str, Any]] = {}
+REMOTE_LIST_CACHE_TTL_SECONDS = 3600
+
+CACHE_DIR = Path(__file__).parent.parent / "config" / "cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+PROBES_DIR = CACHE_DIR / "probes"
+PROBES_DIR.mkdir(parents=True, exist_ok=True)
+LOOKUP_CACHE_FILE = CACHE_DIR / "lookup_cache.json"
+
+def _load_remote_cache() -> Dict[str, Dict[str, Any]]:
+    if LOOKUP_CACHE_FILE.exists():
+        try:
+            with open(LOOKUP_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+remote_storage_list_cache: Dict[str, Dict[str, Any]] = _load_remote_cache()
 
 INTERNAL_SECRET_KEYS = {"_secrets", "wasabiAccessKey", "wasabiAccessId"}
 INTERNAL_STORAGE_SECRET_KEYS = {"_secrets", "accessId", "accessKey", "duplicacyPassword"}
@@ -172,8 +189,19 @@ def _remote_cache_get(key: str) -> Optional[Any]:
     return item.get("value")
 
 
+def _save_remote_cache() -> None:
+    try:
+        tmp_file = LOOKUP_CACHE_FILE.with_suffix(".tmp")
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(remote_storage_list_cache, f)
+        tmp_file.replace(LOOKUP_CACHE_FILE)
+    except Exception as e:
+        logger.error(f"Error saving remote cache: {e}")
+
+
 def _remote_cache_set(key: str, value: Any) -> None:
     remote_storage_list_cache[key] = {"ts": time.time(), "value": value}
+    _save_remote_cache()
 
 
 def sanitize_repo(repo: Dict[str, Any]) -> Dict[str, Any]:
@@ -195,7 +223,8 @@ def sanitize_storage(storage: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_storage_by_id(storage_id: str) -> Optional[Dict[str, Any]]:
-    storages = config_store.storages.read()
+    # Buscamos en todos los storages (gestionados + derivados) para evitar errores 404 en backups legacy
+    storages = list_all_storages_for_ui()
     return next((s for s in storages if s.get("id") == storage_id), None)
 
 
@@ -801,80 +830,31 @@ def list_all_storages_for_ui() -> List[Dict[str, Any]]:
     explicit = config_store.storages.read()
     repos_data = config_store.repositories.read()
 
-    by_key: Dict[str, Dict[str, Any]] = {}
-    # explícitos primero
+    by_id: Dict[str, Dict[str, Any]] = {}
+    
+    # Solo procesamos storages configurados explícitamente
     for s in explicit:
         item = dict(s)
         item.setdefault("source", "managed")
         item.setdefault("linkedBackups", 0)
         item.setdefault("fromRepoIds", [])
-        key = str(item.get("id") or f"url:{item.get('url')}")
-        by_key[key] = item
+        storage_id = item.get("id")
+        if storage_id:
+            by_id[storage_id] = item
 
-    # derivados desde repos existentes (compatibilidad)
+    # Enlazar backups por storageRefId
     for repo in repos_data:
-        primary = get_primary_storage(repo)
-        if not primary:
-            continue
-        url = primary.get("url") or repo.get("storageUrl")
-        if not url:
-            continue
-        derived_key = f"derived:{primary.get('type') or 'legacy'}:{url}"
-        if derived_key not in by_key:
-            item = {
-                "id": derived_key,
-                "name": primary.get("label") or repo.get("name") or "Storage derivado",
-                "type": primary.get("type") or "local",
-                "label": primary.get("label") or ("Wasabi S3" if primary.get("type") == "wasabi" else "Local"),
-                "url": url,
-                "localPath": url if (primary.get("type") == "local") else None,
-                "endpoint": primary.get("endpoint"),
-                "region": primary.get("region"),
-                "bucket": primary.get("bucket"),
-                "directory": primary.get("directory"),
-                "source": "legacy-repo",
-                "linkedBackups": 0,
-                "createdAt": repo.get("createdAt"),
-                "fromRepoIds": [],
-            }
-            # traer secretos si existen en repo Wasabi
-            repo_secrets = ((repo.get("_secrets") or {}).get(primary.get("name") or "default") or {})
-            if repo_secrets:
-                item["_secrets"] = {
-                    "accessId": repo_secrets.get("accessId"),
-                    "accessKey": repo_secrets.get("accessKey"),
-                }
-            by_key[derived_key] = item
-
-        by_key[derived_key]["linkedBackups"] = int(by_key[derived_key].get("linkedBackups") or 0) + 1
-        by_key[derived_key].setdefault("fromRepoIds", []).append(repo.get("id"))
-
-    # enlazar backups también para explícitos por storageRefId / url
-    for repo in repos_data:
-        matched = None
         storage_ref_id = repo.get("storageRefId")
-        if storage_ref_id:
-            for k, s in by_key.items():
-                if s.get("id") == storage_ref_id:
-                    matched = s
-                    break
-        if not matched:
-            primary = get_primary_storage(repo)
-            repo_url = (primary or {}).get("url") or repo.get("storageUrl")
-            if repo_url:
-                for s in by_key.values():
-                    if (s.get("url") or s.get("localPath")) == repo_url:
-                        matched = s
-                        break
-        if matched:
+        if storage_ref_id and storage_ref_id in by_id:
+            matched = by_id[storage_ref_id]
             repo_id = repo.get("id")
-            matched.setdefault("fromRepoIds", [])
             if repo_id and repo_id not in matched["fromRepoIds"]:
                 matched["fromRepoIds"].append(repo_id)
-                matched["linkedBackups"] = int(matched.get("linkedBackups") or 0) + 1
+                matched["linkedBackups"] += 1
 
-    result = list(by_key.values())
-    result.sort(key=lambda s: ((s.get("source") != "managed"), str(s.get("name") or "").lower(), str(s.get("url") or "")))
+    result = list(by_id.values())
+    # Ordenar por nombre
+    result.sort(key=lambda s: str(s.get("name") or "").lower())
     return result
 
 
@@ -1090,15 +1070,26 @@ async def ensure_restore_target_initialized_from_storage(
         )
 
 
+def _get_probe_dir(storage_id: str, snapshot_id: str) -> str:
+    safe_storage = "".join(c if c.isalnum() else "_" for c in storage_id)
+    safe_snapshot = "".join(c if c.isalnum() else "_" for c in snapshot_id)
+    probe_dir = PROBES_DIR / f"{safe_storage}_{safe_snapshot}"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    return str(probe_dir)
+
+
 async def with_temp_storage_session_list_snapshots(
     *,
     storage: Dict[str, Any],
     snapshot_id: str,
     password: Optional[str],
 ) -> Dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix="duplimanager-restore-probe-") as tmp_dir:
+    probe_dir_path = _get_probe_dir(storage.get("id") or "unknown", snapshot_id)
+    pref_file = Path(probe_dir_path) / ".duplicacy" / "preferences"
+    
+    if not pref_file.exists():
         init_result = await duplicacy_service.init(
-            tmp_dir,
+            probe_dir_path,
             snapshot_id,
             storage.get("url") or "",
             password=password,
@@ -1107,12 +1098,13 @@ async def with_temp_storage_session_list_snapshots(
         )
         if init_result.get("code") != 0:
             raise HTTPException(status_code=400, detail=init_result.get("stdout") or init_result.get("stderr") or "No se pudo abrir el backup en el storage")
-        return await duplicacy_service.list_snapshots(
-            tmp_dir,
-            password=password,
-            storage_name="default",
-            extra_env=get_storage_record_env(storage, "default"),
-        )
+            
+    return await duplicacy_service.list_snapshots(
+        probe_dir_path,
+        password=password,
+        storage_name="default",
+        extra_env=get_storage_record_env(storage, "default"),
+    )
 
 
 async def with_temp_storage_session_list_files(
@@ -1122,9 +1114,12 @@ async def with_temp_storage_session_list_files(
     revision: int,
     password: Optional[str],
 ) -> Dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix="duplimanager-restore-probe-") as tmp_dir:
+    probe_dir_path = _get_probe_dir(storage.get("id") or "unknown", snapshot_id)
+    pref_file = Path(probe_dir_path) / ".duplicacy" / "preferences"
+    
+    if not pref_file.exists():
         init_result = await duplicacy_service.init(
-            tmp_dir,
+            probe_dir_path,
             snapshot_id,
             storage.get("url") or "",
             password=password,
@@ -1133,13 +1128,14 @@ async def with_temp_storage_session_list_files(
         )
         if init_result.get("code") != 0:
             raise HTTPException(status_code=400, detail=init_result.get("stdout") or init_result.get("stderr") or "No se pudo abrir el backup en el storage")
-        return await duplicacy_service.list_files(
-            tmp_dir,
-            revision=revision,
-            password=password,
-            storage_name="default",
-            extra_env=get_storage_record_env(storage, "default"),
-        )
+            
+    return await duplicacy_service.list_files(
+        probe_dir_path,
+        revision=revision,
+        password=password,
+        storage_name="default",
+        extra_env=get_storage_record_env(storage, "default"),
+    )
 
 
 def _aws_sign(key: bytes, msg: str) -> bytes:
@@ -1917,6 +1913,41 @@ async def get_repos():
     return {"ok": True, "repos": [sanitize_repo(r) for r in repos]}
 
 
+@app.post("/api/repos/validate")
+async def validate_repo(repo: RepoCreate):
+    destination = None
+    if repo.storageId:
+        linked_storage = get_storage_by_id(repo.storageId)
+        if not linked_storage:
+            raise HTTPException(status_code=404, detail="Storage seleccionado no encontrado")
+        destination = build_destination_from_storage_ref(linked_storage)
+    else:
+        destination = resolve_repo_destination(repo)
+
+    init_password = repo.password or (destination.get("storageDuplicacyPassword") if destination else None)
+    encrypt_enabled = repo.encrypt if repo.encrypt is not None else (True if init_password else False)
+
+    # Use a temporary directory for validation
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        logger.info(f"[RepoValidate] Validando init en {tmp_dir} con snapshotId={repo.snapshotId}")
+        result = await duplicacy_service.init(
+            tmp_dir,
+            repo.snapshotId,
+            destination["storageUrl"],
+            password=init_password,
+            encrypt=encrypt_enabled,
+            extra_env=destination.get("extraEnv")
+        )
+        logger.info(f"[RepoValidate] Respuesta validación: code={result['code']}")
+
+        if result["code"] != 0:
+            detail = (result.get("stdout") or result.get("stderr") or "Duplicacy init validation failed")
+            # Reuse logic for common errors if needed, but for validation we just want to know it failed
+            return {"ok": False, "detail": detail}
+
+    return {"ok": True, "message": "Configuración válida"}
+
+
 @app.get("/api/repos/{repo_id}")
 async def get_repo(repo_id: str):
     repos_data = config_store.repositories.read()
@@ -1940,44 +1971,71 @@ async def create_repo(repo: RepoCreate):
     if not repo_path.exists():
         repo_path.mkdir(parents=True, exist_ok=True)
 
+    repo_id = str(uuid.uuid4())
+    # Use part of the UUID as storage name to avoid conflicts in .duplicacy/config
+    duplicacy_storage_name = f"s-{repo_id[:8]}"
+
+    # Check if already initialized
+    is_already_init = (repo_path / ".duplicacy").exists()
+
     init_password = repo.password or (destination.get("storageDuplicacyPassword") if destination else None)
     encrypt_enabled = repo.encrypt if repo.encrypt is not None else (True if init_password else False)
 
-    result = await duplicacy_service.init(
-        str(repo_path), 
-        repo.snapshotId, 
-        destination["storageUrl"],
-        password=init_password,
-        encrypt=encrypt_enabled,
-        extra_env=destination.get("extraEnv")
-    )
+    if is_already_init:
+        logger.info(f"[RepoInit] Carpeta ya inicializada. Usando 'add' para snapshotId={repo.snapshotId} en {repo_path}")
+        result = await duplicacy_service.add_storage(
+            str(repo_path),
+            duplicacy_storage_name,
+            repo.snapshotId,
+            destination["storageUrl"],
+            password=init_password,
+            encrypt=encrypt_enabled,
+            extra_env=destination.get("extraEnv")
+        )
+    else:
+        logger.info(f"[RepoInit] Iniciando init en {repo_path} con snapshotId={repo.snapshotId}")
+        result = await duplicacy_service.init(
+            str(repo_path),
+            repo.snapshotId,
+            destination["storageUrl"],
+            password=init_password,
+            encrypt=encrypt_enabled,
+            extra_env=destination.get("extraEnv")
+        )
+        # duplicacy init sets name as "default"
+        duplicacy_storage_name = "default"
+
+    logger.info(f"[RepoInit] Respuesta: code={result['code']}")
 
     if result["code"] != 0:
-        detail = (result.get("stdout") or result.get("stderr") or "Duplicacy init failed")
-        if "EmptyStaticCreds" in detail or "Enter Wasabi key" in detail:
-            detail = (
-                "Duplicacy no recibió las credenciales de Wasabi (key/secret) en el init. "
-                "Verifica Access ID / Access Key. "
-                f"Detalle: {detail}"
-            )
-        elif "likely to have been initialized with a password before" in detail:
+        detail = (result.get("stdout") or result.get("stderr") or "Duplicacy setup failed")
+        if "likely to have been initialized with a password before" in detail:
             detail = (
                 "Ese storage de Duplicacy parece estar cifrado con una contraseña previa. "
-                "Usa 'Importar repositorio existente (Wasabi)' y escribe la contraseña de Duplicacy correcta. "
-                f"Detalle: {detail}"
+                "Usa 'Importar repositorio existente (Wasabi)' y escribe la contraseña de Duplicacy correcta."
             )
         raise HTTPException(status_code=500, detail=detail)
 
     storages = [destination["storage"]]
+    # Ensure storage record has the correct name
+    storages[0]["name"] = duplicacy_storage_name
+
     secrets: Dict[str, Dict[str, str]] = destination.get("secrets") or {}
+    # Remap secrets to the correct storage name if they were using "default" or other keys
+    if secrets:
+        remapped_secrets = {}
+        for old_key, val in secrets.items():
+            remapped_secrets[duplicacy_storage_name] = val
+        secrets = remapped_secrets
 
     repos_data = config_store.repositories.read()
     new_repo = {
-        "id": str(uuid.uuid4()),
+        "id": repo_id,
         "name": repo.name,
         "path": str(repo_path),
         "snapshotId": repo.snapshotId,
-        "storageUrl": destination["storageUrl"],  # legacy compatibility
+        "duplicacyStorageName": duplicacy_storage_name,
+        "storageUrl": destination["storageUrl"],
         "storageRefId": destination.get("storageRefId"),
         "storages": storages,
         "replication": {
@@ -2001,6 +2059,7 @@ async def create_repo(repo: RepoCreate):
     config_store.repositories.write(repos_data)
     
     return {"ok": True, "repo": sanitize_repo(new_repo)}
+
 
 
 @app.put("/api/repos/{repo_id}")
@@ -2057,6 +2116,12 @@ async def update_repo(repo_id: str, req: RepoUpdate):
 
 @app.delete("/api/repos/{repo_id}")
 async def delete_repo(repo_id: str):
+    if repo_id in active_backups:
+        raise HTTPException(
+            status_code=409, 
+            detail="No se puede eliminar el repositorio mientras hay un backup en ejecución. Cancélalo primero."
+        )
+    
     repos_data = config_store.repositories.read()
     repo = next((r for r in repos_data if r["id"] == repo_id), None)
     if not repo:
@@ -2135,7 +2200,8 @@ async def start_backup(req: BackupStart):
             if not primary:
                 result = {"code": -1, "stdout": "", "stderr": "Repo sin storage configurado"}
             else:
-                primary_storage_name = primary.get("name")
+                # Prioritize the specific storage name saved during init/add
+                primary_storage_name = repo.get("duplicacyStorageName") or primary.get("name")
                 try:
                     pre_list = await duplicacy_service.list_snapshots(
                         repo["path"],
@@ -2164,8 +2230,8 @@ async def start_backup(req: BackupStart):
                         threads=effective_threads,
                         on_progress=on_progress,
                         on_process_start=on_process_start,
-                        storage_name=primary.get("name"),
-                        extra_env=get_storage_env(repo, primary.get("name"))
+                        storage_name=primary_storage_name,
+                        extra_env=get_storage_env(repo, primary_storage_name)
                     )
 
                     replication = repo.get("replication") or {}
@@ -2303,6 +2369,15 @@ async def start_backup(req: BackupStart):
                 "trigger": trigger,
             }
         finally:
+            # Invalidate repo-related caches after backup attempt (success or error)
+            # to ensure the next list call gets fresh data
+            keys_to_remove = []
+            for k in remote_storage_list_cache.keys():
+                if k.startswith(f"repo-snapshots||{req.repoId}||") or k.startswith(f"repo-files||{req.repoId}||"):
+                    keys_to_remove.append(k)
+            for k in keys_to_remove:
+                remote_storage_list_cache.pop(k, None)
+
             active_backup_processes.pop(req.repoId, None)
             active_backups.pop(req.repoId, None)
 
@@ -2392,13 +2467,32 @@ async def list_snapshots(repo_id: str, password: Optional[str] = None, storage: 
         raise HTTPException(status_code=404, detail="Repository not found")
 
     storage_name = storage or (get_primary_storage(repo) or {}).get("name")
+    
+    # Cache key for snapshots
+    cache_key = _remote_cache_key(
+        "repo-snapshots",
+        repo_id,
+        storage_name,
+        bool(password),
+        hashlib.sha256((password or "").encode("utf-8")).hexdigest() if password else "",
+    )
+    cached = _remote_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     result = await duplicacy_service.list_snapshots(
         repo["path"],
         password=password,
         storage_name=storage_name,
         extra_env=get_storage_env(repo, storage_name)
     )
-    return {"ok": True, "snapshots": result["snapshots"]}
+    
+    if result["code"] != 0:
+        raise HTTPException(status_code=500, detail=result.get("stdout") or result.get("stderr") or "No se pudieron listar snapshots")
+    
+    payload = {"ok": True, "snapshots": result["snapshots"]}
+    _remote_cache_set(cache_key, payload)
+    return payload
 
 
 @app.get("/api/snapshots/{repo_id}/files")
@@ -2409,6 +2503,20 @@ async def list_snapshot_files(repo_id: str, revision: int, password: Optional[st
         raise HTTPException(status_code=404, detail="Repository not found")
 
     storage_name = storage or (get_primary_storage(repo) or {}).get("name")
+    
+    # Cache key for files
+    cache_key = _remote_cache_key(
+        "repo-files",
+        repo_id,
+        storage_name,
+        revision,
+        bool(password),
+        hashlib.sha256((password or "").encode("utf-8")).hexdigest() if password else "",
+    )
+    cached = _remote_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     result = await duplicacy_service.list_files(
         repo["path"],
         revision=revision,
@@ -2418,7 +2526,10 @@ async def list_snapshot_files(repo_id: str, revision: int, password: Optional[st
     )
     if result["code"] != 0:
         raise HTTPException(status_code=500, detail=result.get("stdout") or result.get("stderr") or "No se pudo listar archivos")
-    return {"ok": True, "files": result["files"]}
+    
+    payload = {"ok": True, "files": result["files"]}
+    _remote_cache_set(cache_key, payload)
+    return payload
 
 @app.post("/api/restore")
 async def restore(req: RestoreRequest):

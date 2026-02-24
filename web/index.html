@@ -37,7 +37,7 @@
             </div>
             <div class="nav-item" data-view="storages">
               <span class="icon">🗄️</span>
-              <span>Storages</span>
+              <span>Repositorios</span>
             </div>
             <div class="nav-item" data-view="repositories">
               <span class="icon">🗂️</span>
@@ -47,17 +47,13 @@
               <span class="icon">⏰</span>
               <span>Tareas</span>
             </div>
-            <div class="nav-item" data-view="backup">
-              <span class="icon">⬆️</span>
-              <span>Backup</span>
-            </div>
-            <div class="nav-item" data-view="snapshots">
-              <span class="icon">📋</span>
-              <span>Snapshots</span>
-            </div>
             <div class="nav-item" data-view="restore">
               <span class="icon">⬇️</span>
               <span>Restaurar</span>
+            </div>
+            <div class="nav-item" data-view="backup">
+              <span class="icon">▶️</span>
+              <span>Ejecución</span>
             </div>
           </div>
 
@@ -90,7 +86,7 @@
         <div id="view-dashboard" class="view active">
           <div class="page-header">
             <h2>📊 Dashboard</h2>
-            <p>Vista general de todos tus repositorios de backup</p>
+            <p>Vista general de todos tus backups</p>
           </div>
 
           <div class="stats-grid">
@@ -98,7 +94,7 @@
               <div class="stat-icon blue">📦</div>
               <div class="stat-info">
                 <h3 id="stat-repos">0</h3>
-                <p>Repositorios</p>
+                <p>Backups</p>
               </div>
             </div>
             <div class="stat-card">
@@ -132,9 +128,9 @@
               margin-bottom: 20px;
             "
           >
-            <h3 style="font-size: 18px">Repositorios</h3>
+            <h3 style="font-size: 18px">Tus Backups</h3>
             <button class="btn btn-primary" onclick="openNewRepoModal()">
-              <span>➕</span> Nuevo Repositorio
+              <span>➕</span> Nuevo Backup
             </button>
           </div>
 
@@ -149,18 +145,18 @@
         <!-- ─── STORAGES VIEW ─── -->
         <div id="view-storages" class="view">
           <div class="page-header">
-            <h2>🗄️ Storages</h2>
-            <p>Destinos de Duplicacy (Wasabi/local) importados o detectados desde backups existentes</p>
+            <h2>🗄️ Repositorios</h2>
+            <p>Destinos de Duplicacy (Wasabi/local) configurados para tus copias</p>
           </div>
 
           <div class="card">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
               <div style="font-size:13px; color: var(--text-muted);">
-                Importa primero el storage (Wasabi/local) y después crea uno o más backups que apunten a él.
+                 Configura primero el destino (Wasabi/local) y después crea uno o más backups que lo usen.
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button class="btn btn-ghost" onclick="loadStoragesView()">🔄 Actualizar</button>
-                <button class="btn btn-primary" onclick="openImportStorageModal()">➕ Importar Storage</button>
+                 <button class="btn btn-primary" onclick="openImportStorageModal()">➕ Nuevo Repositorio</button>
               </div>
             </div>
             <div id="storages-table-wrap">
@@ -173,7 +169,7 @@
         <div id="view-repositories" class="view">
           <div class="page-header">
             <h2>🗂️ Backups</h2>
-            <p>Trabajos de copia (Directory + Backup ID/Snapshot ID + Storage)</p>
+            <p>Lista de tus copias de seguridad configuradas</p>
           </div>
 
           <div class="card">
@@ -186,9 +182,9 @@
                 gap: 12px;
               "
             >
-              <div style="font-size: 13px; color: var(--text-muted)">
-                Cada fila representa un trabajo de backup (similar a "Backup" en Duplicacy Web). Puedes usar un storage importado o configurar uno directo.
-              </div>
+               <div style="font-size: 13px; color: var(--text-muted)">
+                 Añade un nuevo backup o importa uno existente pulsando el botón.
+               </div>
               <button class="btn btn-primary" onclick="openNewRepoModal()">
                 ➕ Nuevo Backup
               </button>
@@ -229,124 +225,50 @@
           </div>
         </div>
 
-        <!-- ─── BACKUP VIEW ─── -->
+        <!-- ─── BACKUP EXECUTION VIEW ─── -->
         <div id="view-backup" class="view">
           <div class="page-header">
-            <h2>⬆️ Backup</h2>
-            <p>Ejecutar una copia de seguridad bajo demanda</p>
+            <h2>▶ Ejecutar Backup</h2>
+            <p id="backup-status">Selecciona un repositorio para iniciar la copia de seguridad</p>
           </div>
 
-          <div class="card" style="max-width: 700px">
+          <div class="card" style="max-width: 800px;">
             <div class="form-group">
               <label class="form-label">Repositorio</label>
               <select id="backup-repo-select" class="form-select" onchange="updateBackupRunButtonState()">
-                <option value="">-- Seleccionar repositorio --</option>
+                <option value="">-- Seleccionar backup --</option>
               </select>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Hilos de backup (threads)</label>
-              <input
-                id="backup-threads"
-                type="number"
-                class="form-input"
-                min="1"
-                max="64"
-                step="1"
-                value="16"
-                disabled
-              />
-              <span class="form-hint">Fijo en <strong>16</strong> para backups (configurado en DupliManager). La restauración también usa 16 hilos.</span>
+            <div class="form-group" style="display: none;">
+              <label class="form-label">Hilos (opcional)</label>
+              <input type="number" id="backup-threads" class="form-input" value="16" />
             </div>
 
-            <div style="display: flex; gap: 10px; width: 100%">
-              <button
-                id="btn-start-backup"
-                class="btn btn-success"
-                onclick="runBackup()"
-                style="flex: 1"
-                disabled
-              >
-                ▶ Iniciar Backup
+            <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+              <button id="btn-start-backup" class="btn btn-success" onclick="runBackup()">
+                🚀 Iniciar Backup ahora
               </button>
-              <button
-                id="btn-cancel-backup"
-                class="btn btn-ghost"
-                onclick="cancelBackupRun()"
-                style="min-width: 170px"
-                disabled
-              >
-                ⏹ Cancelar Backup
+              <button id="btn-cancel-backup" class="btn btn-danger" onclick="cancelBackupRun()" style="display: none;">
+                🛑 Cancelar
               </button>
             </div>
 
-            <div style="margin-top: 24px">
-              <div
-                style="
-                  display: flex;
-                  align-items: center;
-                  justify-content: space-between;
-                  margin-bottom: 8px;
-                "
-              >
-                <span class="form-label" style="margin: 0">Progreso</span>
-                <span
-                  id="backup-status"
-                  style="font-size: 12px; color: var(--text-muted)"
-                  >Esperando...</span
-                >
-              </div>
+            <div class="progress-container" style="margin-bottom: 24px;">
               <div class="progress-bar">
-                <div
-                  id="backup-progress-fill"
-                  class="progress-fill"
-                  style="width: 0%"
-                ></div>
+                <div id="backup-progress-fill" class="progress-fill" style="width: 0%"></div>
               </div>
             </div>
 
-            <div style="margin-top: 16px">
-              <span class="form-label">Log de ejecución</span>
-              <div id="backup-log" class="log-output" style="margin-top: 8px">
-                Listo para iniciar backup...
+            <div class="log-section">
+              <label class="form-label">Log de ejecución</label>
+              <div id="backup-log" class="log-output" style="min-height: 400px;">
+                Listo para iniciar...
               </div>
             </div>
           </div>
         </div>
 
-        <!-- ─── SNAPSHOTS VIEW ─── -->
-        <div id="view-snapshots" class="view">
-          <div class="page-header">
-            <h2>📋 Snapshots</h2>
-            <p>Listado de todas las revisiones de backup disponibles</p>
-          </div>
-
-          <div class="card" style="margin-bottom: 20px; max-width: 700px">
-            <div class="form-group" style="margin: 0">
-              <label class="form-label">Repositorio</label>
-              <div style="display: flex; gap: 10px">
-                <select
-                  id="snapshots-repo-select"
-                  class="form-select"
-                  onchange="loadSnapshots()"
-                >
-                  <option value="">-- Seleccionar repositorio --</option>
-                </select>
-                <button class="btn btn-ghost" onclick="loadSnapshots()">
-                  🔄
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div id="snapshots-list">
-            <div class="empty-state">
-              <div class="empty-icon">📋</div>
-              <h3>Selecciona un repositorio</h3>
-              <p>Elige un repositorio de la lista para ver sus snapshots.</p>
-            </div>
-          </div>
-        </div>
 
         <!-- ─── RESTORE VIEW ─── -->
         <div id="view-restore" class="view">
@@ -362,11 +284,11 @@
                 <select id="restore-storage-select" class="form-select" required onchange="onRestoreStorageChange()">
                   <option value="">-- Seleccionar repositorio de destino --</option>
                 </select>
-                <span class="form-hint">Selecciona primero el destino (storage) donde están las copias.</span>
+                <span class="form-hint">Selecciona el repositorio (storage) donde están las copias.</span>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Backup</label>
+                <label class="form-label">Snapshot ID</label>
                 <select id="restore-repo-select" class="form-select" required onchange="onRestoreRepoChange()">
                   <option value="">-- Selecciona un destino primero --</option>
                 </select>
@@ -406,7 +328,7 @@
                 </div>
                 <span class="form-hint"
                   id="restore-revision-hint"
-                  >Al seleccionar un backup, se cargarán las revisiones disponibles.</span
+                  >Al seleccionar un Snapshot ID, se cargarán las revisiones disponibles.</span
                 >
               </div>
 
@@ -578,20 +500,17 @@
     >
       <div class="modal">
         <div class="modal-header">
-          <h3>✏️ Editar Repositorio</h3>
+          <h3>✏️ Editar Backup</h3>
           <button class="modal-close" onclick="closeEditRepoModal()">✕</button>
         </div>
         <div class="modal-body">
           <form id="edit-repo-form" onsubmit="submitEditRepo(event)">
             <input type="hidden" name="repoId" />
 
-            <div class="form-group">
-              <label class="form-label">Nombre del Repositorio</label>
-              <input type="text" name="repoName" class="form-input" required />
-            </div>
+             <!-- ID is primary name -->
 
-            <div class="form-group">
-              <label class="form-label">Carpeta a respaldar (origen)</label>
+             <div class="form-group">
+               <label class="form-label">Carpeta a respaldar</label>
               <div class="input-with-action">
                 <input type="text" name="repoPath" class="form-input" required />
                 <button
@@ -603,9 +522,9 @@
                   📁 Seleccionar
                 </button>
               </div>
-              <span class="form-hint"
-                >Debe apuntar a la carpeta que contiene `.duplicacy` del repositorio.</span
-              >
+               <span class="form-hint"
+                 >Ruta de la carpeta local de este backup.</span
+               >
             </div>
 
             <div class="form-group">
@@ -623,9 +542,9 @@
                   🧹 Respaldar todo
                 </button>
               </div>
-              <span id="edit-content-selection-summary" class="form-hint" style="display:block; margin-top:8px;">
-                Se respaldará todo el contenido de la carpeta origen.
-              </span>
+                <span id="edit-content-selection-summary" class="form-hint" style="display:block; margin-top:8px;">
+                  Se respaldará todo el contenido de la carpeta origen.
+                </span>
             </div>
 
             <div class="form-group" style="border:1px solid var(--border-color); border-radius:12px; padding:14px;">
@@ -748,33 +667,7 @@
         </div>
         <div class="modal-body">
           <form id="repo-form" onsubmit="submitNewRepo(event)">
-            <div class="form-group" id="new-repo-mode-wrap" style="display:none;">
-              <label class="form-label">Modo del backup</label>
-              <select
-                id="new-repo-mode"
-                name="repoMode"
-                class="form-select"
-                onchange="toggleNewRepoModeGuidance()"
-              >
-                <option value="create">Crear Backup ID nuevo</option>
-                <option value="import">Usar Backup ID existente</option>
-              </select>
-              <span id="new-repo-mode-hint" class="form-hint" style="display:block; margin-top:8px;">
-                Crea un Backup ID nuevo y lo vincula a esta carpeta origen.
-              </span>
-            </div>
-
-            <div class="form-group" id="new-repo-name-wrap" style="display:none;">
-              <label class="form-label">Nombre del Backup</label>
-              <input
-                type="text"
-                name="repoName"
-                class="form-input"
-                placeholder="Ej: Documentos de trabajo"
-              />
-              <span id="new-repo-name-hint" class="form-hint">Alias local en DupliManager (opcional).</span>
-            </div>
-
+             <!-- 1. Carpeta a respaldar -->
             <div class="form-group" id="new-repo-directory-wrap">
               <label class="form-label">Carpeta a respaldar</label>
               <div class="input-with-action">
@@ -799,267 +692,95 @@
               >
             </div>
 
-            <div class="form-group" style="margin-top: 4px">
-              <label class="form-label">Storage</label>
+            <!-- 2. Selección de Destino -->
+            <div class="form-group">
+              <label class="form-label">Repositorio de Destino</label>
               <select
                 id="new-repo-storage-select"
                 name="storageId"
                 class="form-select"
                 onchange="toggleNewRepoStorageSource()"
               >
-                <option value="">-- Selecciona un storage guardado o configura uno manualmente --</option>
+                 <option value="">-- Selecciona un repositorio guardado --</option>
               </select>
               <span id="new-repo-storage-hint" class="form-hint">
-                Selecciona el repositorio de destino (storage). Si no existe, usa Opciones avanzadas para configurarlo manualmente.
+                Selecciona dónde se guardará el backup.
               </span>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Backup ID (Snapshot ID)</label>
-              <div class="input-with-action">
-                <input
-                  type="text"
-                  name="snapshotId"
-                  class="form-input"
-                  placeholder="Ej: mi-pc-docs"
-                  required
-                />
-                <button
-                  type="button"
-                  class="btn btn-ghost"
-                  id="btn-open-backup-id-picker"
-                  onclick="openBackupIdPickerFromNewBackup()"
-                  title="Seleccionar Backup ID existente del storage"
-                >
-                  📚 IDs
-                </button>
-              </div>
-              <span class="form-hint"
-                >Backup ID (Snapshot ID) único para este origen (sin
-                espacios)</span
+
+
+            <!-- 3. Modo: Nuevo o Existente -->
+            <div class="form-group" id="new-repo-mode-wrap">
+              <label class="form-label">Configuración del Backup</label>
+              <select
+                id="new-repo-mode"
+                name="repoMode"
+                class="form-select"
+                onchange="toggleNewRepoModeGuidance()"
               >
-              <div id="detect-snapshot-wrap" style="display:none; margin-top:10px;">
+                <option value="create">Nuevo (Desde cero)</option>
+                <option value="import">Existente (Vincular a copia en destino)</option>
+              </select>
+              <span id="new-repo-mode-hint" class="form-hint"></span>
+            </div>
+
+            <!-- 4. Backup ID -->
+             <div class="form-group">
+               <label class="form-label">Backup ID (Snapshot ID)</label>
+               <div class="input-with-action">
+                 <input
+                   type="text"
+                   name="snapshotId"
+                   id="new-repo-snapshot-id"
+                   class="form-input"
+                   placeholder="Ej: mi-pc-docs"
+                   required
+                 />
+                 <button
+                   type="button"
+                   class="btn btn-ghost"
+                   onclick="openBackupIdPickerFromNewBackup()"
+                   title="Seleccionar Snapshot ID existente"
+                 >
+                   🔎 Buscar
+                 </button>
+               </div>
+                <span class="form-hint">Identificador único en el storage.</span>
+             </div>
+
+             <div id="detect-snapshot-wrap" style="display:none; margin-top:10px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 8px;">
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-detect-wasabi-snapshots" onclick="detectWasabiSnapshotIds()">
-                    🔎 Cargar Backup IDs
+                    🔎 Cargar IDs existentes
                   </button>
-                  <select id="detected-snapshot-select" class="form-select" style="min-width:260px; flex:1;" onchange="applyDetectedSnapshotId()">
-                    <option value="">-- Selecciona un Snapshot ID detectado --</option>
+                  <select id="detected-snapshot-select" class="form-select" style="min-width:200px; flex:1;" onchange="applyDetectedSnapshotId()">
+                    <option value="">-- Selecciona un ID --</option>
                   </select>
                 </div>
                 <span id="detected-snapshot-hint" class="form-hint" style="display:block; margin-top:8px;">
-                  Disponible en modo Importar + Wasabi. Si el backup remoto está cifrado, escribe la contraseña de Duplicacy antes de detectar.
+                  Si el backup remoto está cifrado, escribe la contraseña de Duplicacy antes de detectar.
                 </span>
               </div>
-            </div>
 
+
+
+            <!-- 6. Contenido -->
             <div class="form-group">
-              <label class="form-label">Contenido a respaldar (opcional)</label>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="openRepoContentSelector('new')">
-                  🗂️ Seleccionar contenido
-                </button>
-                <button type="button" class="btn btn-ghost btn-sm" onclick="resetRepoContentSelection('new')">
-                  🧹 Respaldar todo
-                </button>
+              <label class="form-label">Filtrar contenido (opcional)</label>
+              <div style="display:flex; gap:10px;">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="openRepoContentSelector('new')">🗂️ Seleccionar</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="resetRepoContentSelection('new')">🧹 Todo</button>
               </div>
-              <span id="new-content-selection-summary" class="form-hint" style="display:block; margin-top:8px;">
-                Se respaldará todo el contenido de la carpeta origen.
-              </span>
+              <span id="new-content-selection-summary" class="form-hint" style="margin-top:8px;">Respaldando todo.</span>
             </div>
 
-            <div class="form-group" id="new-backup-advanced-toggle-wrap" style="margin-top: 8px;">
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-toggle-new-backup-advanced" onclick="toggleNewBackupAdvancedSection()">
-                ⚙️ Mostrar opciones avanzadas
-              </button>
-              <span class="form-hint" style="display:block; margin-top:8px;">
-                Avanzadas: modo crear/importar, alias local, destino manual (local/Wasabi) y contraseña Duplicacy/cifrado.
-              </span>
-            </div>
-
-            <div id="manual-destination-config-wrap" style="display:none;">
-            <div class="form-group" style="margin-top: 18px">
-              <label class="form-label">Tipo de destino</label>
-              <select
-                id="destination-type"
-                name="destinationType"
-                class="form-select"
-                onchange="toggleDestinationFields()"
-              >
-                <option value="local">Local</option>
-                <option value="wasabi">Wasabi S3</option>
-              </select>
-              <span class="form-hint">
-                Solo se configura un destino por repositorio.
-              </span>
-            </div>
-            </div>
-
-            <div id="local-destination-fields" style="display:none;">
-              <div class="form-group">
-                <label class="form-label">Destino local (obligatorio)</label>
-                <div
-                  style="
-                    display: grid;
-                    grid-template-columns: 1fr auto;
-                    gap: 10px;
-                    align-items: center;
-                  "
-                >
-                  <input
-                    type="text"
-                    name="localStoragePath"
-                    class="form-input"
-                    placeholder="Ej: D:\Backups\duplicacy-storage"
-                    required
-                  />
-                  <button
-                    type="button"
-                    class="btn btn-ghost"
-                    onclick="pickLocalStorageFolder()"
-                    title="Seleccionar carpeta local"
-                  >
-                    📁 Seleccionar
-                  </button>
-                </div>
-                <span class="form-hint">
-                  Carpeta de almacenamiento local de Duplicacy (storage).
-                </span>
-              </div>
-            </div>
-
-            <div
-              id="wasabi-fields"
-              style="
-                display: none;
-                border: 1px solid var(--border-color);
-                border-radius: 12px;
-                padding: 16px;
-                margin-top: 10px;
-                background: rgba(255, 255, 255, 0.02);
-              "
-            >
-              <div class="form-group" style="margin-top: 0">
-                <span class="form-hint">
-                  Configuración de destino único Wasabi S3 para este repositorio.
-                </span>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Endpoint Wasabi</label>
-                <input
-                  type="text"
-                  name="wasabiEndpoint"
-                  class="form-input"
-                  placeholder="s3.eu-central-1.wasabisys.com"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Región Wasabi</label>
-                <input
-                  type="text"
-                  name="wasabiRegion"
-                  class="form-input"
-                  placeholder="eu-central-1"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Bucket Wasabi</label>
-                <input
-                  type="text"
-                  name="wasabiBucket"
-                  class="form-input"
-                  placeholder="mi-bucket-backups"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Directorio (opcional)</label>
-                <input
-                  type="text"
-                  name="wasabiDirectory"
-                  class="form-input"
-                  placeholder="duplicacy/carlos"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Access ID</label>
-                <input
-                  type="text"
-                  name="wasabiAccessId"
-                  class="form-input"
-                  placeholder="AKIA... / Wasabi Access Key ID"
-                />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Access Key</label>
-                <input
-                  type="password"
-                  name="wasabiAccessKey"
-                  class="form-input"
-                  placeholder="Secret Access Key de Wasabi"
-                />
-              </div>
-
-              <div class="form-group">
-                <div class="input-with-action" style="display: flex; gap: 10px; flex-wrap: wrap">
-                  <button
-                    type="button"
-                    class="btn btn-ghost"
-                    id="btn-test-wasabi"
-                    onclick="testWasabiConnection()"
-                  >
-                    🔌 Probar conexión Wasabi
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-ghost"
-                    id="btn-test-wasabi-write"
-                    onclick="testWasabiWriteConnection()"
-                  >
-                    🧪 Probar escritura Wasabi
-                  </button>
-                </div>
-                <span
-                  id="wasabi-test-status"
-                  class="form-hint"
-                  style="display: block; margin-top: 8px"
-                ></span>
-              </div>
-
-              <span class="form-hint">
-                URL generada automáticamente: `wasabi://REGION@ENDPOINT/BUCKET/DIRECTORY`
-              </span>
-            </div>
-
-            <div class="form-group" id="new-repo-password-wrap" style="display:none;">
-              <label class="form-label">Contraseña de cifrado (opcional)</label>
-              <input
-                type="password"
-                name="repoPassword"
-                class="form-input"
-                placeholder="Dejar vacío para no cifrar / o contraseña Duplicacy al importar"
-              />
-              <span class="form-hint"
-                id="new-repo-password-hint"
-                >Si se proporciona, todos los datos se cifrarán en el storage</span
-              >
-            </div>
+            <div id="new-repo-validation-status" class="form-hint" style="display:none; margin-bottom:10px; padding:10px; border-radius:8px;"></div>
 
             <div class="modal-footer" style="padding: 0; margin-top: 24px">
-              <button
-                type="button"
-                class="btn btn-ghost"
-                onclick="closeNewRepoModal()"
-              >
-                Cancelar
-              </button>
-              <button type="submit" id="btn-submit-new-repo" class="btn btn-primary">
-                🚀 Crear Backup
-              </button>
+              <button type="button" class="btn btn-ghost" onclick="closeNewRepoModal()">Cancelar</button>
+              <button type="button" id="btn-validate-new-repo" class="btn btn-ghost" onclick="checkNewRepoConfig()">🔍 Verificar Configuración</button>
+              <button type="submit" id="btn-submit-new-repo" class="btn btn-primary">🚀 Crear Backup</button>
             </div>
           </form>
         </div>
@@ -1074,19 +795,19 @@
     >
         <div class="modal">
         <div class="modal-header">
-          <h3 id="import-storage-modal-title">🗄️ Importar Storage</h3>
+           <h3 id="import-storage-modal-title">🗄️ Repositorio</h3>
           <button class="modal-close" onclick="closeImportStorageModal()">✕</button>
         </div>
         <div class="modal-body">
           <form id="import-storage-form" onsubmit="submitImportStorage(event)">
             <input type="hidden" name="storageId" />
             <div class="form-group">
-              <label class="form-label">Alias (Storage Name)</label>
-              <input type="text" name="storageName" class="form-input" placeholder="Ej: Wasabi PortalCai" required />
-              <span id="import-storage-alias-hint" class="form-hint">Nombre local del storage en DupliManager (puede ser nuevo).</span>
+               <label class="form-label">Nombre del Repositorio</label>
+              <input type="text" name="storageName" class="form-input" placeholder="Ej: Wasabi Principal" required />
+              <span id="import-storage-alias-hint" class="form-hint">Nombre para identificar este destino.</span>
             </div>
             <div class="form-group">
-              <label class="form-label">Tipo de storage</label>
+               <label class="form-label">Tipo de destino</label>
               <select name="storageType" class="form-select" onchange="toggleImportStorageTypeFields()">
                 <option value="wasabi">Wasabi S3</option>
                 <option value="local">Local</option>
@@ -1132,7 +853,7 @@
                 <span id="import-storage-accesskey-hint" class="form-hint" style="display:none;">Déjalo vacío para mantener el actual.</span>
               </div>
               <div class="form-group">
-                <label class="form-label">Contraseña Duplicacy (si el storage está cifrado)</label>
+                <label class="form-label">Contraseña Duplicacy (si el repositorio está cifrado)</label>
                 <input type="password" name="duplicacyPassword" class="form-input" placeholder="No es la clave de Wasabi" />
                 <span id="import-storage-duppwd-hint" class="form-hint" style="display:none;">Déjala vacía para mantener la actual.</span>
               </div>
@@ -1140,14 +861,14 @@
 
             <div class="modal-footer" style="padding:0; margin-top:20px;">
               <button type="button" class="btn btn-ghost" onclick="closeImportStorageModal()">Cancelar</button>
-              <button id="btn-submit-storage" type="submit" class="btn btn-primary">💾 Guardar Storage</button>
+              <button id="btn-submit-storage" type="submit" class="btn btn-primary">💾 Guardar Repositorio</button>
             </div>
           </form>
         </div>
       </div>
     </div>
 
-    <!-- ═══ BACKUP ID PICKER MODAL ═══ -->
+    <!-- ═══ SNAPSHOT ID PICKER MODAL (BACKUP ID) ═══ -->
     <div
       id="modal-backup-id-picker"
       class="modal-overlay"
@@ -1155,10 +876,13 @@
     >
       <div class="modal" style="max-width: 760px;">
         <div class="modal-header">
-          <h3>📚 Seleccionar Backup ID</h3>
+          <h3>🔎 Seleccionar Snapshot ID</h3>
           <button class="modal-close" onclick="closeBackupIdPickerModal()">✕</button>
         </div>
         <div class="modal-body">
+          <p id="backup-id-picker-hint" style="margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">
+            Cargando Snapshot IDs disponibles...
+          </p>
           <div class="form-group" style="margin-top: 0;">
             <label class="form-label">Buscar</label>
             <input
@@ -1176,7 +900,7 @@
           <div class="modal-footer" style="padding: 0; margin-top: 16px">
             <button type="button" class="btn btn-ghost" onclick="closeBackupIdPickerModal()">Cancelar</button>
             <button type="button" class="btn btn-primary" id="btn-apply-backup-id-picker" onclick="applyBackupIdFromPicker()" disabled>
-              Seleccionar
+              ✅ Usar Snapshot ID seleccionado
             </button>
           </div>
         </div>
