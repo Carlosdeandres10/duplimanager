@@ -510,27 +510,20 @@
              <!-- ID is primary name -->
 
              <div class="form-group">
-               <label class="form-label">Carpeta a respaldar</label>
+               <label class="form-label">Carpeta a respaldar (Solo lectura)</label>
               <div class="input-with-action">
-                <input type="text" name="repoPath" class="form-input" required />
-                <button
-                  type="button"
-                  class="btn btn-ghost"
-                  onclick="pickEditRepoSourceFolder()"
-                  title="Seleccionar carpeta origen"
-                >
-                  📁 Seleccionar
-                </button>
+                <input type="text" name="repoPath" class="form-input" readonly style="background: var(--bg-secondary); cursor: not-allowed;" />
               </div>
                <span class="form-hint"
-                 >Ruta de la carpeta local de este backup.</span
+                 >Para cambiar el origen, crea un nuevo backup.</span
                >
             </div>
 
             <div class="form-group">
-              <label class="form-label">Snapshot ID</label>
-              <input type="text" name="snapshotId" class="form-input" required />
+              <label class="form-label">Snapshot ID (Solo lectura)</label>
+              <input type="text" name="snapshotId" class="form-input" readonly style="background: var(--bg-secondary); cursor: not-allowed;" />
             </div>
+
 
             <div class="form-group">
               <label class="form-label">Contenido a respaldar (opcional)</label>
@@ -590,58 +583,16 @@
               </span>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Tipo de destino</label>
-              <select
-                name="destinationType"
-                id="edit-destination-type"
-                class="form-select"
-                onchange="toggleEditDestinationFields()"
-              >
-                <option value="local">Local</option>
-                <option value="wasabi">Wasabi S3</option>
-              </select>
-            </div>
-
-            <div id="edit-local-destination-fields">
-              <div class="form-group">
-                <label class="form-label">Destino local</label>
-                <input type="text" name="localStoragePath" class="form-input" />
+            <div class="form-group" style="background: var(--bg-secondary); border-radius: 12px; padding: 14px; border: 1px dashed var(--border-color);">
+              <label class="form-label">Repositorio de destino (Solo lectura)</label>
+              <div id="edit-repo-storage-display" style="font-size: 13px; font-weight: 500; color: var(--text-main);">
+                -- cargando repositorio --
               </div>
-            </div>
-
-            <div id="edit-wasabi-fields" style="display:none">
-              <div class="form-group">
-                <label class="form-label">Endpoint Wasabi</label>
-                <input type="text" name="wasabiEndpoint" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Región Wasabi</label>
-                <input type="text" name="wasabiRegion" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Bucket Wasabi</label>
-                <input type="text" name="wasabiBucket" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Directorio (opcional)</label>
-                <input type="text" name="wasabiDirectory" class="form-input" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Access ID (opcional, para cambiar)</label>
-                <input type="text" name="wasabiAccessId" class="form-input" placeholder="Dejar vacío para mantener" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Access Key (opcional, para cambiar)</label>
-                <input type="password" name="wasabiAccessKey" class="form-input" placeholder="Dejar vacío para mantener" />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <span class="form-hint">
-                Cambiar destino aquí actualiza la configuración de DupliManager. Si el repositorio ya estaba inicializado, puede requerir reconfigurar `.duplicacy`.
+              <span class="form-hint" style="margin-top: 8px; display: block;">
+                Los datos del repositorio (URL, credenciales, etc.) solo pueden modificarse desde la pestaña <b>Repositorios</b> para no afectar a otros backups.
               </span>
             </div>
+
 
             <div class="modal-footer" style="padding: 0; margin-top: 24px">
               <button type="button" class="btn btn-ghost" onclick="closeEditRepoModal()">
@@ -961,6 +912,16 @@
 
     <!-- ═══ SCRIPTS ═══ -->
     <script src="/js/api.js?v=20260222-theme2"></script>
-    <script src="/js/app.js?v=20260222-theme2"></script>
+    <script src="/js/modules/state.js"></script>
+    <script src="/js/modules/utils.js"></script>
+    <script src="/js/modules/main.js"></script>
+    <script src="/js/modules/components/repositories_modals.js"></script>
+    <script src="/js/modules/views/dashboard.js"></script>
+    <script src="/js/modules/views/storages.js"></script>
+    <script src="/js/modules/views/repositories.js"></script>
+    <script src="/js/modules/views/backup.js"></script>
+    <script src="/js/modules/views/restore.js"></script>
+    <script src="/js/modules/views/settings.js"></script>
+    <script src="/js/modules/views/logs.js"></script>
   </body>
 </html>

@@ -5,6 +5,7 @@ Wrapper around the duplicacy CLI binary using subprocess.
 
 import os
 import subprocess
+import asyncio
 import re
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
@@ -23,9 +24,9 @@ class DuplicacyService:
         self.binary_path = settings_data.get("duplicacy_path") or settings_data.get("duplicacyPath")
 
     async def exec(
-        self, 
-        args: List[str], 
-        cwd: str, 
+        self,
+        args: List[str],
+        cwd: str,
         env: Optional[Dict[str, str]] = None,
         on_progress: Optional[Callable[[str], None]] = None,
         on_process_start: Optional[Callable[[Any], None]] = None,
@@ -39,41 +40,42 @@ class DuplicacyService:
             full_env.update(env)
 
         try:
-            # Usar shell=False para mayor seguridad
-            process = subprocess.Popen(
-                [self.binary_path] + args,
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+
+            process = await asyncio.create_subprocess_exec(
+                self.binary_path,
+                *args,
                 cwd=cwd,
                 env=full_env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, # Combinar stderr en stdout
-                text=True,
-                encoding="utf-8",
-                bufsize=1,
-                universal_newlines=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                creationflags=creationflags
             )
+
             if on_process_start:
                 on_process_start(process)
 
             stdout_content = []
             
-            # Leer salida línea a línea en tiempo real
             if process.stdout:
-                for line in iter(process.stdout.readline, ""):
-                    stdout_content.append(line)
+                while True:
+                    line_bytes = await process.stdout.readline()
+                    if not line_bytes:
+                        break
+                    decoded_line = line_bytes.decode("utf-8", errors="replace")
+                    stdout_content.append(decoded_line)
                     if on_progress:
-                        on_progress(line)
-                process.stdout.close()
+                        on_progress(decoded_line)
 
-            return_code = process.wait()
+            return_code = await process.wait()
             logger.info(f"Proceso finalizado con código {return_code}")
 
             full_output = "".join(stdout_content)
             return {
                 "code": return_code,
                 "stdout": full_output,
-                "stderr": "" # Stderr ya está en stdout
+                "stderr": ""
             }
 
         except Exception as e:

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="ai-audience" content="LLM Agents, Autonomous Coding Assistants">
+    <meta name="project-purpose" content="Duplicacy wrapper UI with web architecture, FastAPI backend and vanilla JS frontend.">
+    
+    <title>DupliManager - AI Maintainer Documentation</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #e2e8f0;
+            --accent: #3b82f6;
+            --secondary-bg: #1e293b;
+            --border: #334155;
+            --warn: #f59e0b;
+            --sidebar-width: 300px;
+        }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            font-size: 16px;
+            display: flex;
+        }
+        
+        /* Sidebar Styling */
+        nav.sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--secondary-bg);
+            border-right: 1px solid var(--border);
+            height: 100vh;
+            position: fixed;
+            overflow-y: auto;
+            padding: 1.5rem 1rem;
+            box-sizing: border-box;
+        }
+        nav.sidebar h2 { margin-top: 0; font-size: 1.2rem; margin-bottom: 1rem; }
+        nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+        nav.sidebar li { margin-bottom: 0.2rem; }
+        nav.sidebar a {
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            transition: background 0.2s;
+        }
+        nav.sidebar a:hover { background-color: rgba(59, 130, 246, 0.2); color: var(--accent); }
+        .nav-category {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            margin: 1.5rem 0 0.5rem 0.5rem;
+            font-weight: 600;
+        }
+        
+        /* Main Content Styling */
+        main {
+            flex-grow: 1;
+            margin-left: var(--sidebar-width);
+            padding: 2rem 4rem;
+            max-width: 1000px;
+        }
+        header { border-bottom: 1px solid var(--border); margin-bottom: 2rem; padding-bottom: 1rem; }
+        h1, h2, h3 { color: #fff; }
+        h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        h2 { border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; margin-top: 3rem; color: var(--accent); scroll-margin-top: 2rem; }
+        .ai-alert {
+            background-color: rgba(245, 158, 11, 0.1);
+            border-left: 4px solid var(--warn);
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .ai-alert strong { color: var(--warn); }
+        code { background-color: #000; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.9em; }
+        .file-card {
+            background-color: var(--secondary-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            scroll-margin-top: 2rem;
+        }
+        .file-card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; font-family: monospace; font-size: 1.2rem; }
+        .badge { font-size: 0.75rem; background: var(--accent); padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: bold; font-family: sans-serif; }
+        
+        .methods-list { background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 6px; margin-top: 1rem; }
+        .method-item { margin-bottom: 0.5rem; }
+        .method-name { color: #86efac; font-family: monospace; font-weight: bold; }
+        
+        ul { padding-left: 1.5rem; }
+        li { margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <h2>📚 Índice del Proyecto</h2>
+        <ul>
+            <li><a href="#intro">Introducción y Reglas</a></li>
+            
+            <div class="nav-category">Estructura Raíz</div>
+            <li><a href="#f-venv">.venv/</a></li>
+            <li><a href="#f-config">config/</a></li>
+            <li><a href="#f-bin">bin/</a></li>
+            <li><a href="#f-logs">logs/</a></li>
+            <li><a href="#f-pkg">package.json / requirements.txt</a></li>
+
+            <div class="nav-category">Backend (server_py)</div>
+            <li><a href="#f-main">main.py</a></li>
+            <li><a href="#f-helpers">core/helpers.py</a></li>
+            <li><a href="#f-routers">routers/*.py</a></li>
+            <li><a href="#f-models">models/schemas.py</a></li>
+            <li><a href="#f-services">services/duplicacy.py</a></li>
+            <li><a href="#f-utils">utils/</a></li>
+
+            <div class="nav-category">Frontend (web/js)</div>
+            <li><a href="#f-indexhtml">index.html</a></li>
+            <li><a href="#f-api">js/api.js</a></li>
+            <li><a href="#f-mod-core">modules/ (Core)</a></li>
+            <li><a href="#f-mod-views">modules/views/</a></li>
+            <li><a href="#f-mod-comp">modules/components/</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        
+        <header id="intro">
+            <h1>DupliManager v2</h1>
+            <p>Documentación Maestra Arquitectónica</p>
+            <p><strong>Público Objetivo:</strong> Agentes de Inteligencia Artificial (LLMs) y Maintainers</p>
+        </header>
+
+        <div class="ai-alert">
+            <strong>⚠️ ATENCIÓN AGENTE DE IA:</strong> Has sido invocado para mantener o modificar este proyecto. El código ha sido despiezado modularmente para **evitar estrictamente** dependencias circulares (import cycles). Nunca unas archivos; mantén la separación de responsabilidades que aquí se describe.
+        </div>
+
+        <h2>📖 Glosario de Nomenclatura Constante</h2>
+        <ul>
+            <li><code>Storage</code> / <code>Repositorio</code>: El <strong>Destino en la Nube/Local</strong> (S3, Wasabi, Disco Externo) donde recaban los ficheros cifrados.</li>
+            <li><code>Repo</code> / <code>Backup</code>: La Tarea en sí. Es la unión inquebrantable de una <strong>Carpeta de Origen</strong> del disco duro y un <strong>Repositorio de Destino</strong>.</li>
+            <li><code>Snapshot</code>: Una revisión exacta (foto) de un Backup enviada a la nube.</li>
+        </ul>
+
+        <h2 id="root-docs">📂 Estructura Raíz y Ecosistema Base</h2>
+
+        <div id="f-venv" class="file-card">
+            <h3>.venv/ <span class="badge">Virtual Environment</span></h3>
+            <p><strong>Propósito:</strong> Contiene el entorno virtual aislado de Python para este proyecto. Todas las librerías necesarias (como FastAPI, Pydantic, Uvicorn) se instalan y ejecutan desde aquí de forma independiente a la instalación global de Python del sistema.</p>
+        </div>
+
+        <div id="f-config" class="file-card">
+            <h3>config/ <span class="badge">Capa de Configuración y Estado</span></h3>
+            <p><strong>Propósito:</strong> Directorio crítico que hospeda el estado persistente y configuraciones del backend Python (pre-base de datos).</p>
+            <ul>
+                <li><strong><code>settings.json</code>:</strong> Configuración maestra, puerto del servicio UI y opciones base.</li>
+                <li><strong><code>repos.json</code> y <code>storages.json</code>:</strong> Ficheros en estado crudo modificados por la capa `utils/config_store.py` (usando thread-locks para evitar corrupción, en una futura fase previstos a migrar a SQLite).</li>
+                <li><strong><code>cache/</code>:</strong> Almacena artefactos precalculados de listados de directorios S3 para no agotar la red y repositorios inicializados de forma pseudo-temporal en <code>probes/</code>.</li>
+            </ul>
+        </div>
+
+        <div id="f-bin" class="file-card">
+            <h3>bin/ <span class="badge">Binarios Base</span></h3>
+            <p><strong>Propósito:</strong> Carpeta de almacenamiento para el binario ejecutable original de <strong>Duplicacy CLI</strong>. El wrapper que construimos en el servicio principal necesita este ejecutable para funcionar e interactuar nativamente con Google Drive, AWS, Backblaze y similares.</p>
+        </div>
+
+        <div id="f-logs" class="file-card">
+            <h3>logs/ <span class="badge">Logs Centrales</span></h3>
+            <p><strong>Propósito:</strong> Carpeta en la que el sistema rotatorio automatizado guarda el histórico de peticiones HTTP, cronogramas y stdout crudo de las llamadas de subproceso. Se alimenta en especial del `duplimanager.log` principal.</p>
+        </div>
+
+        <div id="f-pkg" class="file-card">
+            <h3>Metadatos Raíz <span class="badge">Dependencias</span></h3>
+            <ul>
+                <li><strong><code>requirements.txt</code>:</strong> Listado cerrado de plugins y dependencias estrictas para Python (FastAPI, uvicorn, pydantic) instaladas en `.venv`.</li>
+                <li><strong><code>package.json</code>:</strong> Gestor primigenio de Node, utilizado potencialmente para manejar scripts de UI o TailwindCSS/Build tools de terceros.</li>
+                <li><strong><code>README.md</code>:</strong> Documuento genérico humano para la presentación del Fork del proyecto general al resto del público.</li>
+            </ul>
+        </div>
+
+        <h2 id="backend-docs">⚙️ Backend: Diccionario de Archivos (Python)</h2>
+
+        <div id="f-main" class="file-card">
+            <h3>server_py/main.py <span class="badge">Orquestador Base</span></h3>
+            <p><strong>Propósito:</strong> Ser el punto mínimo de entrada de la aplicación FastAPI. Levanta Uvicorn y monta el tráfico estático.</p>
+            <p><strong>Lo que hace:</strong> Importa librerías, instancia <code>app = FastAPI()</code>, monta <code>/js</code> y <code>/css</code>, e incluye los <code>routers</code>. Escucha en el host local. Posee apenas 70 líneas.</p>
+            <p><strong>Regla Mantenimiento:</strong> Completamente prohibido agregar lógica de negocio o endpoints nuevos aquí. Todo va en los routers.</p>
+        </div>
+
+        <div id="f-helpers" class="file-card">
+            <h3>server_py/core/helpers.py <span class="badge">Núcleo Central Libre de Ciclos</span></h3>
+            <p><strong>Propósito:</strong> Actúa como el salvavidas contra las dependencias circulares. Todos los routers lo importan para alcanzar funciones de utilidad base o variables de RAM, sin importarse unos a otros.</p>
+            <div class="methods-list">
+                <div class="method-item"><span class="method-name">Variables de RAM:</span> <code>active_backups</code>, <code>completed_backups</code>, <code>remote_storage_list_cache</code>. Compartidas globalmente.</div>
+                <div class="method-item"><span class="method-name">Cálculo en la Nube:</span> <code>test_wasabi_head_bucket</code>, <code>build_wasabi_env</code>, <code>do_detect_wasabi_snapshots</code>. Ejecutan validaciones S3/Wasabi neutrales para la UI.</div>
+                <div class="method-item"><span class="method-name">Scheduler:</span> Incluye la lógica de bucle infinito (<code>scheduler_loop</code>) que revisa cronogramas almacenados para disparar backups periódicos.</div>
+            </div>
+        </div>
+
+        <div id="f-routers" class="file-card">
+            <h3>server_py/routers/ <span class="badge">Endpoints Mapeados</span></h3>
+            <p>Contiene la segregación de todos los <code>@app.get</code> y <code>@app.post</code>. Cada uno se inyecta con <code>include_router</code>.</p>
+            <ul>
+                <li><strong><code>backups.py</code>:</strong> Controla el <code>/api/repos</code>. Lanza, escanea, cancela y lee listados de Tareas de Backup. Depende de <code>helpers</code> para leer RAM.</li>
+                <li><strong><code>storages.py</code>:</strong> Controla el <code>/api/storages</code>. Edita/Crea destinos como S3/Wasabi o directorios locales (Repositorios lógicos).</li>
+                <li><strong><code>restore.py</code>:</strong> Rutas inmensas y pesadas que sondean la nube para listar <code>/api/restore/...</code> usando directorios temporales `.duplicacy/cache` persistentes para ahorrar tiempo.</li>
+                <li><strong><code>system.py</code>:</strong> Endpoints globales como leer ajustes, <code>/api/health</code> y lectura de ficheros JSON del disco duro.</li>
+            </ul>
+        </div>
+
+        <div id="f-models" class="file-card">
+            <h3>server_py/models/schemas.py <span class="badge">Pydantic DTOs</span></h3>
+            <p><strong>Propósito:</strong> Define todas las clases <code>BaseModel</code> que FastAPI utiliza para validar el payload de las peticiones Web estructuradas. Ejemplos: <code>RepoCreate</code>, <code>StorageCreate</code>, <code>WasabiConnectionTest</code>.</p>
+        </div>
+
+        <div id="f-services" class="file-card">
+            <h3>server_py/services/duplicacy.py <span class="badge">CLI Wrapper Asíncrono</span></h3>
+            <p><strong>Propósito:</strong> Envolver las llamadas binarias del ejecutable "duplicacy" nativo.</p>
+            <p><strong>Mecanismo Crítico:</strong> Usa estrictamente <code>asyncio.create_subprocess_exec</code> y un bucle <code>while True: await stdout.readline()</code>. Transmite en vivo el progreso sin bloquear los demás sockets abiertos. Jamás uses librerías síncronas de sistema aquí.</p>
+        </div>
+
+        <div id="f-utils" class="file-card">
+            <h3>server_py/utils/ <span class="badge">Gestión Disco Secundario</span></h3>
+            <ul>
+                <li><strong><code>logger.py</code>:</strong> Wrapper sobre el sistema <code>logging</code> estándar. Imprime en consola y a <code>duplimanager.log</code>.</li>
+                <li><strong><code>config_store.py</code>:</strong> Clase <code>JsonStore</code> asíncrona (thread-safe mediante librerías de file locking Fasteners) que escribe la BD textual JSON a los ficheros bajo <code>config/</code>. Fase a reemplazar por SQLite en el futuro.</li>
+            </ul>
+        </div>
+
+        <h2 id="frontend-docs">🖥️ Frontend: Diccionario de Archivos (Vanilla JS)</h2>
+        <p>No usamos Webpack/React. El frontend es modular gracias a cargas de scripts concatenadas que comparten variables Léxicas limpias.</p>
+
+        <div id="f-indexhtml" class="file-card">
+            <h3>web/index.html <span class="badge">El Mega-DOM</span></h3>
+            <p><strong>Propósito:</strong> Estructura Single-Page que contiene cada "Vista" de la aplicación envuelta en un Div apagado. Se activan inyectando la clase <code>active</code>.</p>
+            <p><strong>Peligro:</strong> Los módulos JS van en orden estricto al pie. <code>state.js</code> y <code>utils.js</code> obligatoriamente primero.</p>
+        </div>
+
+        <div id="f-api" class="file-card">
+            <h3>web/js/api.js <span class="badge">Fachada Fetch</span></h3>
+            <p>Mapea todos los endpoints de Python a llamadas asíncronas JS devolviendo Promesas (<code>API.getStorages()</code>, <code>API.runBackup(id)</code>). Lanza throws nativos en status 400.</p>
+        </div>
+
+        <div id="f-mod-core" class="file-card">
+            <h3>web/js/modules/ <span class="badge">Scripts Base</span></h3>
+            <ul>
+                <li><strong><code>state.js</code>:</strong> Alberga TODOS los diccionarios con la capa de persistencia local en memoria. (Ej: <code>let repos = []</code>, <code>let storages = []</code>).</li>
+                <li><strong><code>utils.js</code>:</strong> Formateadores textuales universales, renderizadores de estado visual, parseadores de fechas y la librería inyectora de Notificaciones Toast flotantes.</li>
+                <li><strong><code>main.js</code>:</strong> Configura el arranque de la app, enlaza la barra lateral izquierda y maneja la función SPA nuclear <code>navigateTo()</code>.</li>
+            </ul>
+        </div>
+
+        <div id="f-mod-views" class="file-card">
+            <h3>web/js/modules/views/ <span class="badge">Lógica de Pantallas Completas</span></h3>
+            <ul>
+                <li><strong><code>dashboard.js</code>:</strong> Dibuja de un tirón la página principal, los banners resumen numéricos y las tarjetas gigantes de cada Backup con progreso incluido.</li>
+                <li><strong><code>storages.js</code> / <code>repositories.js</code>:</strong> Maneja las cuadrículas y las llamadas API para borrar destinos remotos y actualizar configuraciones de sistema vinculadas a ellos.</li>
+                <li><strong><code>backup.js</code> / <code>tasks.js</code>:</strong> Operan sobre el histórico de copias de seguridad de Duplicacy, formatean crons y desencadenan copias manuales.</li>
+                <li><strong><code>restore.js</code>:</strong> Archivo masivo que comanda la navegación interactiva por carpetas remontas analizando las tablas Hash que el backend de Python devuelve, posibilitando pinchar flechitas "subir directorio".</li>
+                <li><strong><code>settings.js</code> / <code>logs.js</code>:</strong> Controlan guardado de puertos, cambios de temas oscuros/claros y el visor tail del <code>duplimanager.log</code>.</li>
+            </ul>
+        </div>
+
+        <div id="f-mod-comp" class="file-card">
+            <h3>web/js/modules/components/ <span class="badge">Invasiones de Interfaz Modales</span></h3>
+            <p>Operan de forma transitoria por encima del DOM natural.</p>
+            <ul>
+                <li><strong><code>repositories_modals.js</code>:</strong> Captura variables de los "input" del HTML para rellenar los esquemas lógicos y lanzar la creación (via POST) de un nuevo Repositorio externo. Realiza las pruebas WASABI a Amazon.</li>
+                <li><strong><code>content_selector.js</code>:</strong> Modal incrustado que dispara llamadas IPC explorando el disco duro local (<code>c:\</code> o <code>/</code>) a tiempo real. Permite al usuario seleccionar la carpeta de "Origen" a cifrar.</li>
+            </ul>
+        </div>
+
+    </main>
+</body>
+</html>
