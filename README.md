@@ -36,6 +36,27 @@ A diferencia de otros programas, DupliManager guarda todos sus ajustes y base de
 
 ---
 
+## 🏗️ Qué hace cada archivo y carpeta (Arquitectura Técnica)
+
+### 1. El Servidor Backend (`server_py/`)
+
+El corazón lógico. Funciona en segundo plano sin importar si tienes la pestaña de tu navegador abierta o no.
+
+- **`main.py`**: El archivo que arranca el puerto `8500` e inicia Uvicorn (el servidor de red).
+- **Las Rutas (`routers/`)**: Son los semáforos. `backups.py` maneja las peticiones para arrancar o parar copias. `restore.py` escanea la nube para descargar tu árbol de ficheros.
+- **Los Motores (`core/`)**: Funcionan en las sombras. En concreto, `helpers.py` actúa como un _Cron Job_ perpetuo: despierta cada ciertos segundos, lee a qué hora tocan los próximos backups según `repos.json` y los dispara automáticamente.
+- **El Enlace (`services/duplicacy.py`)**: Este es el único archivo que de verdad interactúa físicamente con el programa `duplicacy.exe`. Le pasa las contraseñas, recoge la barra de progreso y te la envía a la pantalla.
+
+### 2. El Panel Web Front-end (`web/js/`)
+
+El cerebro de la página web que ves en tu navegador. Diseñado de forma separada (Módulos) para que nunca tengas que recargar la web.
+
+- **`api.js`**: El mensajero. Es el único fichero autorizado a hacer peticiones por red al servidor de Python. Si falla la conexión, este archivo saca el error.
+- **`modules/views/`**: Cada archivo aquí (ej: `dashboard.js`, `restore.js`, `logs.js`) es responsable de dibujar una pestaña entera de la aplicación.
+- **`modules/components/`**: Pequeños modales flotantes. Por ejemplo, `repositories_modals.js` dibuja la ventana para introducir tus credenciales de Amazon S3, y `content_selector.js` dibuja el explorador visual de tus discos duros locales.
+
+---
+
 ## 🚑 Troubleshooting (Solución de problemas comunes)
 
 ### ¿El servidor no arranca y dice "puerto 8500 en uso"?

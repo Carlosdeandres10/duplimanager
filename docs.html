@@ -143,24 +143,49 @@
             <li><code>Snapshot</code> / <code>Revisión</code>: Piensa en esto como una rama de Git de tus archivos pero para tus backups. Un "hilo" constante histórico de subidas incrementales de la tarea de copia.</li>
         </ul>
 
-        <h2 id="f-config">📂 Archivos de Configuración (Bases de datos)</h2>
+        <h2 id="f-structure">🧩 Arquitectura del Producto (Características Funcionales)</h2>
 
         <div class="file-card">
-            <h3>config/ <span class="badge">Directorio JSON de Persistencia</span></h3>
-            <p><strong>Propósito:</strong> DupliManager guarda su estado para facilitarte las copias a mano y el versionado. No utiliza MariaDB ni PostgreSQL, toda la información son archivos JSON en texto plano.</p>
+            <h3>server_py/routers/ <span class="badge">Lógica de Negocio (Backend)</span></h3>
+            <p><strong>Visión del Producto:</strong> Este componente gestiona las reglas de negocio cuando el usuario interactúa con la interfaz. Determina qué está permitido hacer y procesa las instrucciones críticas de datos.</p>
             <ul>
-                <li><strong><code>settings.json</code>:</strong> Configuraciones del motor, puerto TCP del servidor Uvicorn (por defecto 8500).</li>
-                <li><strong><code>repos.json</code> y <code>storages.json</code>:</strong> Donde habitan los Destinos y Tareas programadas. Puedes inyectar backups masivamente mediante scripts tocando estos ficheros si el servicio está apagado (hot-standby).</li>
-                <li><strong><code>cache/</code>:</strong> Contiene ficheros temporales y cachés de red sobre lo que hay en los servidores en la nube (ej: una caché efímera de qué snapshot IDs hay subidos a Wasabi) para así ahorrarse pings internacionales que frenen el servidor.</li>
+                <li><strong><code>backups.py</code> (Gestor de Tareas):</strong> Gestiona el Ciclo de Vida de las copias. Permite al usuario iniciar nuevas tareas de respaldo manuales o cancelar las que están en curso, y actualiza la barra de progreso de la UI.</li>
+                <li><strong><code>storages.py</code> (Gestor de Nube):</strong> Administra la "Bóveda" de destinos. Conecta y valida automáticamente las credenciales de Amazon S3 o Wasabi que el usuario introduce en el panel, asegurando que la conexión sea válida antes de continuar.</li>
+                <li><strong><code>restore.py</code> (Motor de Recuperación):</strong> Facilita una característica fundamental: el árbol visual de recuperación. Habla con la nube para listar qué archivos existen, permitiendo al usuario navegar y seleccionar qué desea restaurar sin comandos complejos.</li>
+                <li><strong><code>system.py</code> (Utilidades Web):</strong> Mantiene informada a la interfaz sobre la "Salud" de la aplicación, como encender el botón verde que indica que el motor funciona correctamente.</li>
             </ul>
         </div>
 
-        <h2 id="f-logs">📄 Registros (Logs y Auditoría del Servidor)</h2>
+        <div class="file-card">
+            <h3>server_py/core/ <span class="badge">Automatización Transparente</span></h3>
+            <p><strong>Visión del Producto:</strong> Estos módulos aportan el valor diferencial del "Set it and forget it" (Configúralo y olvídalo). Operan en segundo plano de manera autónoma.</p>
+            <ul>
+                <li><strong><code>helpers.py</code> (El Planificador Silencioso):</strong> Actúa como el vigilante del sistema. Revisa constantemente las frecuencias (ej: "Lunes a las 02:00") que el usuario configuró en la interfaz web y ejecuta las copias de seguridad de forma totalmente automática a su hora.</li>
+                <li><strong><code>remote_cache.py</code> (Acelerador de Interfaz):</strong> Mantiene una memoria rápida temporal de la nube. Su objetivo de producto es que el usuario no sufra tiempos de carga excesivos viendo spinners de carga cuando navega por su historial de backups en el panel web.</li>
+            </ul>
+        </div>
 
         <div class="file-card">
-            <h3>logs/ <span class="badge">duplimanager.log</span></h3>
-            <p><strong>Propósito:</strong> Todo lo que ocurra bajo la superficie de la interfaz termina aquí registrado con nivel de trazabilidad INFO y DEBUG. Rotan de forma automática a la media noche (00:00).</p>
-            <p><strong>Si un servidor de un cliente se apaga catastróficamente a mediodía:</strong> Aquí es donde vendrás asiduamente. El ejecutable del CLI (`duplicacy.exe`) vuelca su salida de stdout/stderr sobre este log también, por lo que cualquier "Access Denied" originado por Wasabi estará íntegro en estas líneas.</p>
+            <h3>web/js/modules/ <span class="badge">La Experiencia de Usuario (SPA)</span></h3>
+            <p><strong>Visión del Producto:</strong> Es la interfaz premium que ve el usuario. Está construida como una Single-Page Application (SPA) para que la transición entre menús sea instantánea y moderna, pareciéndose a una app nativa en lugar de una página web tradicional.</p>
+            <ul>
+                <li><strong><code>views/</code> (Pantallas):</strong> Contiene el diseño y la interactividad de cada módulo del panel izquierdo. Por ejemplo, el <code>dashboard.js</code> genera las métricas visuales clave (Tarjetas Resumen) para que el estado de salud de los datos se entienda de un solo vistazo.</li>
+                <li><strong><code>components/</code> (Pop-ups Dinámicos):</strong> Diseñados para que el usuario no pierda el contexto de lo que estaba haciendo. Cuando pinchan "Nuevo Repositorio", aquí se definen las ventanas flotantes que les guían paso a paso como un asistente visual (Wizard).</li>
+            </ul>
+        </div>
+
+        <h2 id="f-config">📂 Persistencia de Datos y Configuración (Estado del Usuario)</h2>
+
+        <div class="file-card">
+            <h3>config/ <span class="badge">Archivos de Estado JSON</span></h3>
+            <p><strong>Visión del Producto:</strong> Para facilitar la portabilidad, el producto no exige instalar bases de datos gigantescas. El perfil, las cuentas en la nube de este usuario y los registros de sus tareas se guardan en archivos JSON ligeros, garantizando que el usuario entienda qué datos guarda la app de él.</p>
+        </div>
+
+        <h2 id="f-logs">📄 Auditoría y Registro Completo (Logs)</h2>
+
+        <div class="file-card">
+            <h3>logs/ <span class="badge">Histórico Diarios de Eventos</span></h3>
+            <p><strong>Visión del Producto:</strong> La confianza es clave en el negocio del Backup. Cada acción, desde una copia exitosa hasta un fallo de contraseña de Amazon, se anota en el <code>duplimanager.log</code> para ofrecer transparencia y trazabilidad técnica en caso de soporte a cliente.</p>
         </div>
 
         <h2 id="backend">🛠️ Operaciones del Servicio del Servidor</h2>
@@ -181,6 +206,39 @@
             <p>Mantenemos estrictamente encapsulado el servidor web a este directorio para no ensuciar otras aplicaciones del OS. El archivo `requirements.txt` define las cuatro librerías puntuales del motor. Actívalo en consola (`.venv\Scripts\Activate.ps1`) antes de levantar el servidor por comandos, caso contrario se quejará de la falta de un modulo FastAPI.</p>
         </div>
 
+
+        <h2 id="f-structure">🏗️ Arquitectura de Ficheros (Qué hace cada cosa)</h2>
+
+        <div class="file-card">
+            <h3>server_py/routers/ <span class="badge">Rutas de la API Base</span></h3>
+            <p><strong>Propósito:</strong> Estos ficheros controlan cómo el servidor web responde cuando el navegador (Frontend) le pide cosas. Separados para no mezclar lógicas.</p>
+            <ul>
+                <li><strong><code>backups.py</code>:</strong> Controla el listado de Tareas de Backup en la UI. Permite iniciar, detener o leer el progreso de un backup en tiempo real.</li>
+                <li><strong><code>storages.py</code>:</strong> Encargado de leer/escribir sobre el fichero <code>storages.json</code>. Valida que las credenciales de Amazon S3 / Wasabi sean correctas comprobando la conexión.</li>
+                <li><strong><code>restore.py</code>:</strong> Lógica pesada que escanea en la nube qué carpetas y ordenadores hay guardados para poder pintar el árbol de directorios cuando le das a "Restaurar".</li>
+                <li><strong><code>system.py</code>:</strong> Pequeñas rutas genéricas, como el chequeo de "Salud" del servidor para mostrar el botón verde de "Servidor Activo" en la esquina.</li>
+            </ul>
+        </div>
+
+        <div class="file-card">
+            <h3>server_py/core/ <span class="badge">Orquestadores Centrales</span></h3>
+            <p><strong>Propósito:</strong> Donde reside el corazón de la máquina. Estos ficheros operan de fondo independientemente de si hay un usuario conectado o no.</p>
+            <ul>
+                <li><strong><code>helpers.py</code>:</strong> Este fichero vigila el infinito (Cron Job). Está programado para despertar, leer a qué hora tocan los próximos backups (según <code>repos.json</code>) y arrancarlos sin que nadie tenga que darle a ningún botón.</li>
+                <li><strong><code>storage_helpers.py</code>:</strong> Herramientas auxiliares para traducir URLs genéricas en rutas exactas que el CLI de Duplicacy entienda matemáticamente.</li>
+                <li><strong><code>remote_cache.py</code>:</strong> Conecta efímeramente con la nube para listar identificadores rápidos sin descargar megabytes de historial.</li>
+            </ul>
+        </div>
+
+        <div class="file-card">
+            <h3>web/js/modules/ <span class="badge">El Cerebro del Panel Web</span></h3>
+            <p><strong>Propósito:</strong> La interfaz que ves al entrar al puerto <code>8500</code> está partida en "pedazos" visuales (JavaScript) para que navegue ultra rápido sin recargar la página web entera.</p>
+            <ul>
+                <li><strong><code>api.js</code>:</strong> Es el mensajero. Es el único fichero que sabe cómo hacer peticiones HTTP (Fetch) hacia Python. Si hay un error de "Servidor no responde", salta aquí.</li>
+                <li><strong><code>views/</code> (Carpeta):</strong> Contiene ficheros como <code>dashboard.js</code> o <code>restore.js</code>. Si la pestaña "Dashboard" de la izquierda no carga, el problema está en ese único fichero. Cada uno pinta una sección de la aplicación.</li>
+                <li><strong><code>components/</code> (Carpeta):</strong> Contiene cosas "flotantes" en la pantalla, como los pop-ups (Modales) que oscurecen el fondo y te piden una contraseña o te dejan explorar tu disco duro visualmente.</li>
+            </ul>
+        </div>
 
         <h2 id="troubleshooting">🚨 TroubleShooting: Solución de Desastres Base</h2>
 

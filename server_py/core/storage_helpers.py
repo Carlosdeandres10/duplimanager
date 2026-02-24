@@ -1,11 +1,13 @@
 import os
 import re
 from typing import Dict, Any, Optional, List
+from fastapi import HTTPException
 from server_py.utils.logger import get_logger
 from server_py.utils import config_store
 from server_py.models.schemas import RepoCreate, RepoUpdate
 
 logger = get_logger("StorageHelpers")
+INTERNAL_STORAGE_SECRET_KEYS = {"_secrets", "accessId", "accessKey", "duplicacyPassword"}
 
 def sanitize_storage(storage: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = dict(storage)
