@@ -8,6 +8,7 @@ const API = {
     async _fetch(url, opts = {}) {
         const response = await fetch(`${this.BASE}${url}`, {
             headers: { 'Content-Type': 'application/json', ...opts.headers },
+            cache: 'no-store',
             ...opts
         });
         let data = {};

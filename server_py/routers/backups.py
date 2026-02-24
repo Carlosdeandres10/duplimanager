@@ -219,27 +219,25 @@ async def create_repo(repo: RepoCreate):
 
 @router.put("/api/repos/{repo_id}")
 async def update_repo(repo_id: str, req: RepoUpdate):
-    repos_data = repositories_config.read()
-    idx = next((i for i, r in enumerate(repos_data) if r["id"] == repo_id), None)
-    if idx is None:
+    def apply_update(all_repos):
+        r_idx = next((i for i, r in enumerate(all_repos) if r["id"] == repo_id), None)
+        if r_idx is not None:
+            r = all_repos[r_idx]
+            if req.name is not None:
+                r["name"] = req.name.strip() or r.get("name")
+            if req.contentSelection is not None:
+                r["contentSelection"] = normalize_content_selection(req.contentSelection)
+            if req.schedule is not None:
+                r["schedule"] = normalize_schedule_config(req.schedule, r.get("schedule"))
+        return all_repos
+
+    repos_data = repositories_config.atomic_update(apply_update)
+    repo = next((r for r in repos_data if r["id"] == repo_id), None)
+    if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    repo = dict(repos_data[idx])
-    changed_destination = False
-
-    if req.name is not None:
-        repo["name"] = req.name.strip() or repo.get("name")
-    
-    if req.contentSelection is not None:
-        repo["contentSelection"] = normalize_content_selection(req.contentSelection)
-
-    if req.schedule is not None:
-        repo["schedule"] = normalize_schedule_config(req.schedule, repo.get("schedule"))
-
-    repos_data[idx] = repo
-    repositories_config.write(repos_data)
-
     return {"ok": True, "repo": sanitize_repo(repo)}
+
 
 
 @router.delete("/api/repos/{repo_id}")
@@ -333,12 +331,14 @@ async def start_backup(req: BackupStart):
             if not primary:
                 result = {"code": -1, "stdout": "", "stderr": "Repo sin storage configurado"}
             else:
-                # Prioritize the specific storage name saved during init/add
+                # Auto-recuperar password
                 primary_storage_name = repo.get("duplicacyStorageName") or primary.get("name")
+                effective_password = req.password or get_repo_duplicacy_password(repo, primary_storage_name)
+
                 try:
                     pre_list = await duplicacy_service.list_snapshots(
                         repo["path"],
-                        password=req.password,
+                        password=effective_password,
                         storage_name=primary_storage_name,
                         extra_env=get_storage_env(repo, primary_storage_name),
                     )
@@ -359,7 +359,7 @@ async def start_backup(req: BackupStart):
 
                     result = await duplicacy_service.backup(
                         repo["path"],
-                        password=req.password,
+                        password=effective_password,
                         threads=effective_threads,
                         on_progress=on_progress,
                         on_process_start=on_process_start,
@@ -384,7 +384,7 @@ async def start_backup(req: BackupStart):
                             repo["path"],
                             from_storage=from_storage,
                             to_storage=to_storage,
-                            password=req.password,
+                            password=effective_password,
                             on_progress=on_progress,
                             on_process_start=on_process_start,
                             extra_env=get_storage_env(repo, to_storage)
@@ -403,7 +403,7 @@ async def start_backup(req: BackupStart):
                             backup_summary = await build_backup_change_summary(
                                 repo,
                                 storage_name=primary_storage_name,
-                                password=req.password,
+                                password=effective_password,
                                 pre_latest_revision=pre_latest_revision,
                             )
                             if req.repoId in active_backups and backup_summary:
@@ -436,26 +436,29 @@ async def start_backup(req: BackupStart):
                         except Exception:
                             logger.exception("[Backup] Error calculando resumen de cambios repo=%s", req.repoId)
 
-            # Update repo info
-            all_repos = repositories_config.read()
-            for r in all_repos:
-                if r["id"] == req.repoId:
-                    r["lastBackup"] = datetime.now().isoformat()
-                    was_cancelled = bool((active_backups.get(req.repoId) or {}).get("cancelRequested"))
-                    final_status = "cancelled" if was_cancelled else ("success" if result["code"] == 0 else "error")
-                    r["lastBackupStatus"] = final_status
-                    r["lastBackupTrigger"] = trigger
-                    r["lastBackupOutput"] = result["stdout"][-500:]
-                    r["lastBackupSummary"] = (active_backups.get(req.repoId) or {}).get("backupSummary")
-                    if isinstance(r.get("schedule"), dict):
-                        r["schedule"]["lastRunAt"] = datetime.now().isoformat()
-                        r["schedule"]["lastRunStatus"] = final_status
-                        if final_status == "success":
-                            r["schedule"]["lastError"] = None
-                        elif result.get("stderr"):
-                            r["schedule"]["lastError"] = (result.get("stderr") or result.get("stdout") or "")[:300]
-                    break
-            repositories_config.write(all_repos)
+            # Update repo info securely via atomic_update
+            def update_last_backup(all_repos):
+                for r in all_repos:
+                    if r["id"] == req.repoId:
+                        r["lastBackup"] = datetime.now().isoformat()
+                        was_cancelled = bool((active_backups.get(req.repoId) or {}).get("cancelRequested"))
+                        final_status = "cancelled" if was_cancelled else ("success" if result["code"] == 0 else "error")
+                        r["lastBackupStatus"] = final_status
+                        r["lastBackupTrigger"] = trigger
+                        r["lastBackupOutput"] = result["stdout"][-500:]
+                        r["lastBackupSummary"] = (active_backups.get(req.repoId) or {}).get("backupSummary")
+                        if isinstance(r.get("schedule"), dict):
+                            r["schedule"]["lastRunAt"] = datetime.now().isoformat()
+                            r["schedule"]["lastRunStatus"] = final_status
+                            if final_status == "success":
+                                r["schedule"]["lastError"] = None
+                            elif result.get("stderr"):
+                                r["schedule"]["lastError"] = (result.get("stderr") or result.get("stdout") or "")[:300]
+                        break
+                return all_repos
+
+            repositories_config.atomic_update(update_last_backup)
+
             duration = round(time.monotonic() - started_monotonic, 2)
             was_cancelled = bool((active_backups.get(req.repoId) or {}).get("cancelRequested"))
             logger.info(

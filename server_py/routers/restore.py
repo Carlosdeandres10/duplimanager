@@ -7,9 +7,10 @@ from server_py.utils.config_store import repositories as repositories_config
 from server_py.models.schemas import RestoreRequest
 from server_py.services.duplicacy import service as duplicacy_service
 from server_py.core.helpers import (
-    get_primary_storage, get_storage_env, describe_storage, 
+    get_primary_storage, get_storage_env, describe_storage,
     summarize_path_selection, ensure_restore_target_initialized,
     _remote_cache_key, _remote_cache_get, _remote_cache_set, 
+    get_repo_duplicacy_password,
     FIXED_DUPLICACY_THREADS, logger, config_store
 )
 
@@ -20,19 +21,26 @@ router = APIRouter(tags=["restore"])
 @router.get("/api/snapshots/{repo_id}")
 async def list_snapshots(repo_id: str, password: Optional[str] = None, storage: Optional[str] = None):
     repos_data = config_store.repositories.read()
+    repo_ids = [r.get("id") for r in repos_data]
+    logger.info(f"[Snapshots] Solicitando {repo_id} | IDs en BD: {repo_ids}")
+    
     repo = next((r for r in repos_data if r["id"] == repo_id), None)
     if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
+        logger.warning(f"[Snapshots] No se encuentra {repo_id} en la lista {repo_ids}")
+        raise HTTPException(status_code=404, detail=f"Repository not found: {repo_id}")
 
     storage_name = storage or (get_primary_storage(repo) or {}).get("name")
+    
+    # Auto-recuperar password si no viene en la request
+    effective_password = password or get_repo_duplicacy_password(repo, storage_name)
     
     # Cache key for snapshots
     cache_key = _remote_cache_key(
         "repo-snapshots",
         repo_id,
         storage_name,
-        bool(password),
-        hashlib.sha256((password or "").encode("utf-8")).hexdigest() if password else "",
+        bool(effective_password),
+        hashlib.sha256((effective_password or "").encode("utf-8")).hexdigest() if effective_password else "",
     )
     cached = _remote_cache_get(cache_key)
     if cached is not None:
@@ -40,7 +48,7 @@ async def list_snapshots(repo_id: str, password: Optional[str] = None, storage: 
 
     result = await duplicacy_service.list_snapshots(
         repo["path"],
-        password=password,
+        password=effective_password,
         storage_name=storage_name,
         extra_env=get_storage_env(repo, storage_name)
     )
@@ -62,14 +70,17 @@ async def list_snapshot_files(repo_id: str, revision: int, password: Optional[st
 
     storage_name = storage or (get_primary_storage(repo) or {}).get("name")
     
+    # Auto-recuperar password
+    effective_password = password or get_repo_duplicacy_password(repo, storage_name)
+    
     # Cache key for files
     cache_key = _remote_cache_key(
         "repo-files",
         repo_id,
         storage_name,
         revision,
-        bool(password),
-        hashlib.sha256((password or "").encode("utf-8")).hexdigest() if password else "",
+        bool(effective_password),
+        hashlib.sha256((effective_password or "").encode("utf-8")).hexdigest() if effective_password else "",
     )
     cached = _remote_cache_get(cache_key)
     if cached is not None:
@@ -78,7 +89,7 @@ async def list_snapshot_files(repo_id: str, revision: int, password: Optional[st
     result = await duplicacy_service.list_files(
         repo["path"],
         revision=revision,
-        password=password,
+        password=effective_password,
         storage_name=storage_name,
         extra_env=get_storage_env(repo, storage_name),
     )
@@ -112,15 +123,18 @@ async def restore(req: RestoreRequest):
         FIXED_DUPLICACY_THREADS,
         summarize_path_selection(req.patterns),
     )
+    # Auto-recuperar password
+    effective_password = req.password or get_repo_duplicacy_password(repo, storage_name)
+
     if restore_path and os.path.normcase(os.path.abspath(restore_path)) != os.path.normcase(os.path.abspath(repo["path"])):
-        await ensure_restore_target_initialized(repo, restore_path, req.password, storage_name)
+        await ensure_restore_target_initialized(repo, restore_path, effective_password, storage_name)
         working_path = restore_path
 
     result = await duplicacy_service.restore(
         working_path, 
         req.revision, 
         overwrite=req.overwrite, 
-        password=req.password,
+        password=effective_password,
         storage_name=storage_name,
         extra_env=get_storage_env(repo, storage_name),
         patterns=req.patterns or None,
@@ -145,9 +159,7 @@ async def restore(req: RestoreRequest):
         req.repoId,
         repo.get("name", "—"),
         req.revision,
-        result.get("code"),
         duration,
         working_path,
     )
     return {"ok": True, "output": result["stdout"], "restorePath": working_path}
-

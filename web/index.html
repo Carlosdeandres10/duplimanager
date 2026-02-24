@@ -339,37 +339,12 @@
                   <span>Restaurar todo el snapshot</span>
                 </label>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                  <button type="button" class="btn btn-ghost btn-sm" onclick="loadRestoreFilesForSelectedRevision()">📂 Cargar ficheros/carpetas</button>
-                  <input
-                    type="text"
-                    id="restore-path-filter"
-                    class="form-input"
-                    placeholder="Filtrar rutas..."
-                    style="flex:1; min-width:220px;"
-                    oninput="filterRestorePaths()"
-                  />
-                </div>
-                <div class="restore-browser-toolbar">
-                  <button type="button" id="btn-restore-root" class="btn btn-ghost btn-sm" onclick="goToRestoreRootFolder()">
-                    🏠 Raíz
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="openRestoreSelectorModal()">
+                    🗂️ Seleccionar contenido a restaurar
                   </button>
-                  <button type="button" id="btn-restore-up" class="btn btn-ghost btn-sm" onclick="goUpRestoreFolder()">
-                    ⬆ Subir
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="resetRestorePartialSelection()">
+                    🧹 Restaurar todo
                   </button>
-                  <div id="restore-browser-breadcrumbs" class="restore-breadcrumbs">
-                    <span class="restore-breadcrumb-current">Raíz</span>
-                  </div>
-                </div>
-                <div
-                  id="restore-path-list"
-                  class="restore-checklist"
-                  style="min-height: 220px;"
-                >
-                  <div class="restore-check-empty">-- Selecciona una revisión para cargar rutas --</div>
-                </div>
-                <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-                  <button type="button" id="btn-restore-clear-selection" class="btn btn-ghost btn-sm" onclick="clearRestorePathSelection()">🧹 Limpiar selección</button>
-                  <button type="button" id="btn-restore-select-visible" class="btn btn-ghost btn-sm" onclick="selectVisibleRestorePaths()">✅ Seleccionar visibles</button>
                 </div>
                 <span class="form-hint" id="restore-path-hint">
                   Marca “Restaurar todo” o desmárcalo para seleccionar ficheros/carpetas concretos.
@@ -909,6 +884,49 @@
 
     <!-- ═══ TOAST CONTAINER ═══ -->
     <div id="toast-container" class="toast-container"></div>
+
+    <!-- ═══ RESTORE SELECTOR MODAL ═══ -->
+    <div
+      id="modal-restore-selector"
+      class="modal-overlay"
+      onclick="if (event.target === this) closeRestoreSelectorModal();"
+    >
+      <div class="modal" style="max-width: 920px; width: min(920px, 94vw);">
+        <div class="modal-header">
+          <h3>🗂️ Seleccionar contenido a restaurar</h3>
+          <button class="modal-close" onclick="closeRestoreSelectorModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+            <button type="button" id="btn-restore-root" class="btn btn-ghost btn-sm" onclick="goToRestoreRootFolder()">🏠 Raíz</button>
+            <button type="button" id="btn-restore-up" class="btn btn-ghost btn-sm" onclick="goUpRestoreFolder()">⬆ Subir</button>
+            <button type="button" class="btn btn-ghost btn-sm" style="border: 1px solid var(--border-color);" onclick="loadRestoreFilesForSelectedRevision()">📂 Cargar archivos del snapshot</button>
+            <input id="restore-path-filter" class="form-input" type="text" placeholder="Filtrar nombres..." style="flex:1; min-width:220px;" oninput="filterRestorePaths()" />
+          </div>
+
+          <div id="restore-browser-breadcrumbs" class="restore-breadcrumbs" style="margin-bottom:10px;">
+            <span class="restore-breadcrumb-current">Raíz</span>
+          </div>
+
+          <div id="restore-path-list" class="restore-checklist" style="min-height:300px; max-height:420px;">
+            <div class="restore-check-empty">-- Selecciona una revisión para cargar rutas --</div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <button type="button" id="btn-restore-select-visible" class="btn btn-ghost btn-sm" onclick="selectVisibleRestorePaths()">✅ Seleccionar visibles</button>
+            <button type="button" id="btn-restore-clear-selection" class="btn btn-ghost btn-sm" onclick="clearRestorePathSelection()">🧹 Limpiar selección</button>
+          </div>
+          <span id="restore-path-status-hint" class="form-hint" style="display:block; margin-top:10px;">
+            Marca "Restaurar todo" en la pantalla principal para restaurar todo.
+          </span>
+
+          <div class="modal-footer" style="padding: 0; margin-top: 22px">
+            <button type="button" class="btn btn-ghost" onclick="closeRestoreSelectorModal()">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="saveRestoreSelectorSelection()">💾 Usar selección</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ═══ SCRIPTS ═══ -->
     <script src="/js/api.js?v=20260222-theme2"></script>

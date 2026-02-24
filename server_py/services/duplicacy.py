@@ -232,14 +232,42 @@ class DuplicacyService:
             args.extend(["-threads", str(threads)])
         if overwrite:
             args.append("-overwrite")
-        if patterns:
-            args.extend(patterns)
 
         env = self._build_password_env(password, storage_name or "default")
         if extra_env:
             env.update(extra_env)
 
-        return await self.exec(args, repo_path, env=env, on_progress=on_progress)
+        import tempfile
+        
+        # WinError 206 limit command line to 32768 characters.
+        # Use an ignore file to pass patterns instead of pure args.
+        if patterns:
+            # We must use delete=False because the duplicacy subprocess might 
+            # run into permission errors in Windows if the file is held by Python
+            tf = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False)
+            try:
+                for p in patterns:
+                    # Duplicacy syntax: '+' to include explicitly
+                    # But the frontend might already be sending specific patterns.
+                    # Duplicacy accepts inclusion patterns by prefixing with '+' or '-'
+                    # Ensure it works smoothly with what the frontend sends.
+                    prefix = "" if p.startswith("+") or p.startswith("-") else "+"
+                    tf.write(f"{prefix}{p}\n")
+                # Default drop everything else when we include specific files
+                tf.write("-*\n")
+                tf.close()
+                
+                args.extend(["-ignore", tf.name])
+                result = await self.exec(args, repo_path, env=env, on_progress=on_progress)
+            finally:
+                try:
+                    os.remove(tf.name)
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up temp ignore file {tf.name}: {cleanup_err}")
+            return result
+        else:
+            return await self.exec(args, repo_path, env=env, on_progress=on_progress)
+
 
     # ─── PARSERS ────────────────────────────────────────────────
 

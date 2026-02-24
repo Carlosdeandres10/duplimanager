@@ -87,8 +87,20 @@ class ConfigStore:
                 return DEFAULTS.get(self.filename, {})
 
     def write(self, data: Any):
-        """Escribe la config completa."""
-        json_str = json.dumps(data, indent=2, ensure_ascii=False)
+        """Escribe la config completa con validación de integridad."""
+        if not isinstance(data, (list, dict)):
+            logger.error(f"[ConfigStore] Intento de escribir datos no estructurados en {self.filename}: {type(data)}")
+            return
+
+        try:
+            # Serializar y validar que el resultado es un JSON válido
+            json_str = json.dumps(data, indent=2, ensure_ascii=False)
+            # Doble comprobación de seguridad: intentar cargar lo que acabamos de serializar
+            json.loads(json_str)
+        except (TypeError, ValueError) as e:
+            logger.error(f"[ConfigStore] Error de serialización en {self.filename}: {e}")
+            return
+
         with _db_lock:
             with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
                 conn.execute(
@@ -97,11 +109,12 @@ class ConfigStore:
                 )
                 conn.commit()
                 
-        # Guardar también el JSON en modo sólo lectura (backup) para no romper scripts externos
+        # Guardar también el JSON en modo sólo lectura (backup)
         try:
             (CONFIG_DIR / self.filename).write_text(json_str, encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"[ConfigStore] No se pudo escribir archivo de backup {self.filename}: {e}")
+
 
     def update(self, key: str, value: Any) -> Any:
         """Actualiza un valor usando dot notation."""
@@ -136,8 +149,42 @@ class ConfigStore:
         return data
 
 
+    def atomic_update(self, callback: Any) -> Any:
+        """Realiza un ciclo de lectura-modificación-escritura atómico."""
+        with _db_lock:
+            with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
+                # 1. Leer
+                cursor = conn.execute("SELECT data FROM config_store WHERE filename = ?", (self.filename,))
+                row = cursor.fetchone()
+                data = json.loads(row[0]) if row else DEFAULTS.get(self.filename, [])
+                
+                # 2. Modificar via callback
+                new_data = callback(data)
+                
+                # 3. Validar y Escribir
+                if not isinstance(new_data, (list, dict)):
+                    logger.error(f"[ConfigStore] atomic_update rechazada: {type(new_data)} en {self.filename}")
+                    return data
+
+                json_str = json.dumps(new_data, indent=2, ensure_ascii=False)
+                conn.execute(
+                    "UPDATE config_store SET data = ? WHERE filename = ?",
+                    (json_str, self.filename)
+                )
+                conn.commit()
+                
+                # Respaldo JSON asíncrono secundario
+                try:
+                    (CONFIG_DIR / self.filename).write_text(json_str, encoding="utf-8")
+                except Exception:
+                    pass
+                    
+                return new_data
+
+
 # ─── Singletons ──────────────────────────────────────
 settings = ConfigStore("settings.json")
 repositories = ConfigStore("repositories.json")
 storages = ConfigStore("storages.json")
 schedules = ConfigStore("schedules.json")
+

@@ -1946,7 +1946,7 @@ function getRestoreSelectionContext() {
     const raw = (document.getElementById('restore-repo-select')?.value || '').trim();
     if (!raw) return { kind: null, storage, storageId: storage?.id || '' };
     if (raw.startsWith('repo:')) {
-        const repoId = raw.slice(4);
+        const repoId = raw.slice(5);
         const repo = repos.find(r => r.id === repoId) || null;
         return { kind: 'repo', storage, storageId: storage?.id || '', repoId, repo, snapshotId: repo?.snapshotId || null };
     }
@@ -2162,6 +2162,7 @@ async function loadRestoreFilesForSelectedRevision() {
     if (!ctx.kind || !revision) {
         resetRestorePartialSelection();
         if (pathHint) pathHint.textContent = 'Selecciona una revisión para cargar archivos y carpetas.';
+        showToast('Debes seleccionar un origen de destino y una revisión antes de cargar las rutas.', 'warning');
         return;
     }
 
@@ -2186,13 +2187,6 @@ async function loadRestoreFilesForSelectedRevision() {
         const pathFilter = document.getElementById('restore-path-filter');
         if (pathFilter) pathFilter.value = '';
         filterRestorePaths();
-        if (pathHint) {
-            const dirCount = restoreFileEntries.filter(x => x.isDir).length;
-            const fileCount = restoreFileEntries.filter(x => !x.isDir).length;
-            pathHint.textContent = restoreFileEntries.length
-                ? `Se cargaron ${dirCount} carpetas y ${fileCount} ficheros. Desmarca "Restaurar todo" para marcar lo que quieras restaurar.`
-                : 'No se encontraron rutas en la revisión seleccionada.';
-        }
         toggleRestoreAllMode();
     } catch (err) {
         resetRestorePartialSelection();
@@ -2211,6 +2205,38 @@ function resetRestorePartialSelection() {
     renderRestoreBrowserChrome();
     renderRestorePathList([]);
     toggleRestoreAllMode();
+    document.getElementById('restore-all-toggle').checked = true;
+}
+
+function openRestoreSelectorModal() {
+    const isAllMode = document.getElementById('restore-all-toggle')?.checked;
+    if (isAllMode) {
+        document.getElementById('restore-all-toggle').checked = false;
+        toggleRestoreAllMode();
+    }
+    const modal = document.getElementById('modal-restore-selector');
+    if (modal) modal.classList.add('show');
+}
+
+function closeRestoreSelectorModal() {
+    const modal = document.getElementById('modal-restore-selector');
+    if (modal) modal.classList.remove('show');
+    updateRestorePartialSummary();
+}
+
+function saveRestoreSelectorSelection() {
+    closeRestoreSelectorModal();
+}
+
+function updateRestorePartialSummary() {
+    const pathHint = document.getElementById('restore-path-hint');
+    if (!pathHint) return;
+
+    if (restoreSelectedPatterns.size === 0) {
+        pathHint.textContent = "Has desmarcado 'Restaurar todo' pero no has elegido ningún archivo/carpeta. Se restaurará todo por defecto.";
+    } else {
+        pathHint.innerHTML = `Se restaurarán <strong>${restoreSelectedPatterns.size}</strong> archivos/carpetas directamente seleccionados.`;
+    }
 }
 
 function normalizeRestoreBrowserPath(path) {
@@ -2799,6 +2825,15 @@ async function confirmDeleteRepo(id, name) {
     try {
         await API.deleteRepo(id);
         showToast('🗑 Backup eliminado', 'success');
+
+        // Clear in-memory caches related to this repo to prevent it from showing up in Restore tab
+        if (typeof restoreRevisionsCache !== 'undefined') delete restoreRevisionsCache[`repo:${id}`];
+        if (typeof restoreFilesCache !== 'undefined') {
+            Object.keys(restoreFilesCache).forEach(key => {
+                if (key.startsWith(`repo:${id}:rev:`)) delete restoreFilesCache[key];
+            });
+        }
+
         if (currentView === 'repositories') {
             loadRepositoriesView();
         } else {

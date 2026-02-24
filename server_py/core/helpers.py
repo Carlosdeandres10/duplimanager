@@ -251,88 +251,68 @@ def _parse_iso_datetime(value: Any) -> Optional[datetime]:
 
 
 async def scheduler_tick():
+    from server_py.routers.backups import start_backup
+    
     repos_data = config_store.repositories.read()
-    changed = False
     now = datetime.now()
 
     for repo in repos_data:
+        repo_id = repo.get("id")
         schedule = repo.get("schedule")
-        if not isinstance(schedule, dict):
+        
+        if not isinstance(schedule, dict) or not schedule.get("enabled"):
             continue
-        if not schedule.get("enabled"):
-            # keep nextRunAt limpio si desactivado
-            if schedule.get("nextRunAt") is not None:
-                schedule["nextRunAt"] = None
-                changed = True
-            continue
-
-        # Normalizar silenciosamente schedules antiguos/incompletos
-        normalized = normalize_schedule_config(schedule, schedule)
-        if normalized != schedule:
-            repo["schedule"] = normalized
-            schedule = normalized
-            changed = True
-
+            
         next_run = _parse_iso_datetime(schedule.get("nextRunAt"))
         if next_run is None:
-            next_run_dt = compute_next_run_for_schedule(schedule, now)
-            schedule["nextRunAt"] = next_run_dt.isoformat() if next_run_dt else None
-            changed = True
-            next_run = next_run_dt
-
-        if repo.get("id") in active_backups:
+            # Inicialización de primera ejecución
+            def init_next_run(all_repos):
+                for r in all_repos:
+                    if r["id"] == repo_id:
+                        r_sch = r.get("schedule")
+                        if r_sch and r_sch.get("enabled"):
+                            new_next = compute_next_run_for_schedule(r_sch, now)
+                            r_sch["nextRunAt"] = new_next.isoformat() if new_next else None
+                return all_repos
+            config_store.repositories.atomic_update(init_next_run)
             continue
-        if not next_run or next_run > now:
+
+        if repo_id in active_backups:
             continue
+            
+        if now >= next_run:
+            # Toca ejecutar
+            threads = schedule.get("threads")
+            logger.info("[Scheduler] Toca backup repo=%s nombre=%s", repo_id, repo.get("name"))
+            
+            # 1. Actualizar el schedule atómicamente ANTES de lanzar para evitar re-disparos
+            def mark_queued(all_repos):
+                for r in all_repos:
+                    if r["id"] == repo_id:
+                        r_sch = r.get("schedule")
+                        r_sch["lastRunAt"] = now.isoformat()
+                        r_sch["lastRunStatus"] = "queued"
+                        r_sch["lastError"] = None
+                        # Calcular próxima ejecución (después de esta)
+                        new_next = compute_next_run_for_schedule(r_sch, now + timedelta(seconds=1))
+                        r_sch["nextRunAt"] = new_next.isoformat() if new_next else None
+                return all_repos
+            config_store.repositories.atomic_update(mark_queued)
+            
+            # 2. Lanzar el backup (async)
+            try:
+                await start_backup(BackupStart(repoId=repo_id, threads=threads, trigger="scheduler"))
+            except Exception as e:
+                logger.error(f"[Scheduler] Fallo al iniciar backup repo={repo_id}: {e}")
+                def mark_error(all_repos):
+                    for r in all_repos:
+                        if r["id"] == repo_id:
+                            r_sch = r.get("schedule")
+                            r_sch["lastRunStatus"] = "error"
+                            r_sch["lastError"] = str(e)
+                    return all_repos
+                config_store.repositories.atomic_update(mark_error)
 
-        threads = schedule.get("threads")
-        logger.info(
-            "[Scheduler] Lanzando backup repo=%s nombre=%s tipo=%s hora=%s threads=%s",
-            repo.get("id"),
-            repo.get("name", "—"),
-            schedule.get("type"),
-            schedule.get("time"),
-            threads if threads is not None else "auto",
-        )
-        try:
-            await start_backup(BackupStart(repoId=repo["id"], threads=threads, trigger="scheduler"))
-            schedule["lastRunAt"] = now.isoformat()
-            schedule["lastRunStatus"] = "queued"
-            schedule["lastError"] = None
-            next_run_dt = compute_next_run_for_schedule(schedule, now + timedelta(seconds=1))
-            schedule["nextRunAt"] = next_run_dt.isoformat() if next_run_dt else None
-            changed = True
-            logger.info(
-                "[Scheduler] Backup encolado repo=%s nombre=%s proxima=%s",
-                repo.get("id"),
-                repo.get("name", "—"),
-                schedule.get("nextRunAt") or "—",
-            )
-        except HTTPException as exc:
-            schedule["lastRunAt"] = now.isoformat()
-            schedule["lastRunStatus"] = "error"
-            schedule["lastError"] = str(exc.detail)
-            # Recalcular siguiente ejecución para evitar bucle de reintento continuo
-            next_run_dt = compute_next_run_for_schedule(schedule, now + timedelta(seconds=60))
-            schedule["nextRunAt"] = next_run_dt.isoformat() if next_run_dt else None
-            changed = True
-            logger.warning(
-                "[Scheduler] No se pudo lanzar backup repo=%s nombre=%s detalle=%s",
-                repo.get("id"),
-                repo.get("name", "—"),
-                exc.detail,
-            )
-        except Exception:
-            schedule["lastRunAt"] = now.isoformat()
-            schedule["lastRunStatus"] = "error"
-            schedule["lastError"] = "Error inesperado lanzando el backup programado"
-            next_run_dt = compute_next_run_for_schedule(schedule, now + timedelta(seconds=60))
-            schedule["nextRunAt"] = next_run_dt.isoformat() if next_run_dt else None
-            changed = True
-            logger.exception("[Scheduler] Error inesperado repo=%s", repo.get("id"))
-
-    if changed:
-        config_store.repositories.write(repos_data)
 
 
 async def scheduler_loop():

@@ -69,6 +69,15 @@ async function confirmDeleteRepo(id, name) {
     try {
         await API.deleteRepo(id);
         showToast('🗑 Backup eliminado', 'success');
+
+        // Clear in-memory caches related to this repo to prevent it from showing up in Restore tab
+        if (typeof restoreRevisionsCache !== 'undefined') delete restoreRevisionsCache[`repo:${id}`];
+        if (typeof restoreFilesCache !== 'undefined') {
+            Object.keys(restoreFilesCache).forEach(key => {
+                if (key.startsWith(`repo:${id}:rev:`)) delete restoreFilesCache[key];
+            });
+        }
+
         if (currentView === 'repositories') {
             loadRepositoriesView();
         } else {
