@@ -535,17 +535,23 @@ def build_wasabi_env(access_id: str, access_key: str, storage_name: str = "defau
     access_key = (access_key or "").strip()
     if not access_id or not access_key:
         return {}
-    upper = (storage_name or "default").upper()
+    import re
+    alias = (storage_name or "default").strip()
+    safe_alias = re.sub(r"[^A-Za-z0-9]", "_", alias).upper()
+
     return {
-        "DUPLICACY_S3_ID": access_id,
-        "DUPLICACY_S3_SECRET": access_key,
+        "WASABI_KEY": access_id,
+        "WASABI_SECRET": access_key,
         "DUPLICACY_WASABI_KEY": access_id,
         "DUPLICACY_WASABI_SECRET": access_key,
-        f"DUPLICACY_{upper}_S3_ID": access_id,
-        f"DUPLICACY_{upper}_S3_SECRET": access_key,
-        f"DUPLICACY_{upper}_WASABI_KEY": access_id,
-        f"DUPLICACY_{upper}_WASABI_SECRET": access_key,
+        "DUPLICACY_S3_ID": access_id,
+        "DUPLICACY_S3_SECRET": access_key,
+        f"DUPLICACY_{safe_alias}_S3_ID": access_id,
+        f"DUPLICACY_{safe_alias}_S3_SECRET": access_key,
+        f"DUPLICACY_{safe_alias}_WASABI_KEY": access_id,
+        f"DUPLICACY_{safe_alias}_WASABI_SECRET": access_key,
     }
+
 
 
 def get_storage_record_env(storage: Dict[str, Any], storage_name: str = "default") -> Dict[str, str]:
@@ -735,8 +741,9 @@ def build_destination_from_storage_ref(storage: Dict[str, Any]) -> Dict[str, Any
         "destinationType": storage_type,
         "storageUrl": base_storage["url"],
         "storage": base_storage,
-        "extraEnv": get_storage_record_env(storage, "default"),
+        "extraEnv": get_storage_record_env(storage, storage.get("region") or "default"),
         "secrets": secrets,
+
         "storageRefId": storage.get("id"),
         "storageDuplicacyPassword": ((storage.get("_secrets") or {}).get("duplicacyPassword") or None),
     }
@@ -1344,7 +1351,9 @@ async def validate_wasabi_duplicacy_storage_access_if_initialized(
 async def do_detect_wasabi_snapshots(req):
     from server_py.models.schemas import WasabiSnapshotDetectRequest
     storage_url = build_wasabi_storage_url(req.region, req.endpoint, req.bucket, req.directory)
-    extra_env = build_wasabi_env(req.accessId, req.accessKey, "default")
+    # Importante: Duplicacy usa la región como alias en la URL, así que el env debe coincidir
+    extra_env = build_wasabi_env(req.accessId, req.accessKey, req.region)
+
     password = (req.password or "").strip() or None
     cache_key = _remote_cache_key(
         "wasabi-snapshots",

@@ -51,6 +51,19 @@ async def validate_repo(repo: RepoCreate):
     init_password = repo.password or (destination.get("storageDuplicacyPassword") if destination else None)
     encrypt_enabled = repo.encrypt if repo.encrypt is not None else (True if init_password else False)
 
+    # Asegurar que las credenciales cubran el alias "default" usado en init temporal
+    extra_env = dict(destination.get("extraEnv") or {})
+    linked_storage = get_storage_by_id(repo.storageId) if repo.storageId else None
+    if linked_storage or (repo.destinationType == "wasabi"):
+        src = linked_storage or {
+            "type": "wasabi",
+            "_secrets": {
+                "accessId": repo.wasabiAccessId,
+                "accessKey": repo.wasabiAccessKey
+            }
+        }
+        extra_env.update(get_storage_record_env(src, "default"))
+
     # Use a temporary directory for validation
     with tempfile.TemporaryDirectory() as tmp_dir:
         logger.info(f"[RepoValidate] Validando init en {tmp_dir} con snapshotId={repo.snapshotId}")
@@ -60,8 +73,9 @@ async def validate_repo(repo: RepoCreate):
             destination["storageUrl"],
             password=init_password,
             encrypt=encrypt_enabled,
-            extra_env=destination.get("extraEnv")
+            extra_env=extra_env
         )
+
         logger.info(f"[RepoValidate] Respuesta validación: code={result['code']}")
 
         if result["code"] != 0:
@@ -105,6 +119,19 @@ async def create_repo(repo: RepoCreate):
     init_password = repo.password or (destination.get("storageDuplicacyPassword") if destination else None)
     encrypt_enabled = repo.encrypt if repo.encrypt is not None else (True if init_password else False)
 
+    # Cargar variables de entorno del storage, asegurando que cubran el alias dinámico
+    extra_env = dict(destination.get("extraEnv") or {})
+    if linked_storage or (repo.destinationType == "wasabi"):
+        src = linked_storage or {
+            "type": "wasabi",
+            "_secrets": {
+                "accessId": repo.wasabiAccessId,
+                "accessKey": repo.wasabiAccessKey
+            }
+        }
+        # Inyectar credenciales específicamente para el alias que vamos a usar en Duplicacy
+        extra_env.update(get_storage_record_env(src, duplicacy_storage_name))
+
     if is_already_init:
         logger.info(f"[RepoInit] Carpeta ya inicializada. Usando 'add' para snapshotId={repo.snapshotId} en {repo_path}")
         result = await duplicacy_service.add_storage(
@@ -114,20 +141,24 @@ async def create_repo(repo: RepoCreate):
             destination["storageUrl"],
             password=init_password,
             encrypt=encrypt_enabled,
-            extra_env=destination.get("extraEnv")
+            extra_env=extra_env
         )
     else:
         logger.info(f"[RepoInit] Iniciando init en {repo_path} con snapshotId={repo.snapshotId}")
+        # Para init, duplicacy usa "default" como nombre interno
+        init_env = dict(extra_env)
+        init_env.update(get_storage_record_env(src, "default"))
         result = await duplicacy_service.init(
             str(repo_path),
             repo.snapshotId,
             destination["storageUrl"],
             password=init_password,
             encrypt=encrypt_enabled,
-            extra_env=destination.get("extraEnv")
+            extra_env=init_env
         )
         # duplicacy init sets name as "default"
         duplicacy_storage_name = "default"
+
 
     logger.info(f"[RepoInit] Respuesta: code={result['code']}")
 
