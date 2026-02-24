@@ -24,9 +24,25 @@ DEFAULTS = {
         "language": "es",
         "theme": "dark",
         "notifications": {
-            "enabled": False,
-            "email": None,
-            "webhook": None
+            "healthchecks": {
+                "enabled": False,
+                "url": "",
+                "successKeyword": "success",
+                "timeoutSeconds": 10,
+                "sendLog": True,
+            },
+            "email": {
+                "enabled": False,
+                "smtpHost": "",
+                "smtpPort": 587,
+                "smtpStartTls": True,
+                "smtpUsername": "",
+                "smtpPassword": "",
+                "from": "",
+                "to": "",
+                "subjectPrefix": "[DupliManager]",
+                "sendLog": True,
+            }
         }
     },
     "repositories.json": [],

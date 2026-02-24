@@ -170,7 +170,12 @@ function openEditRepoModal(repoId) {
     form.repoId.value = repo.id;
     form.repoPath.value = repo.path || '';
     form.snapshotId.value = repo.snapshotId || '';
-    
+    applyRepoNotificationsToForm(form, repo.notifications || null);
+    const notifyTestStatus = document.getElementById('edit-repo-notify-test-status');
+    if (notifyTestStatus) {
+        notifyTestStatus.textContent = 'Prueba el envío real a Healthchecks y/o correo con esta configuración.';
+        notifyTestStatus.style.color = '';
+    }
     applyScheduleToEditForm(repo.schedule || null);
     editRepoContentState = {
         rootPath: repo.path || '',
@@ -220,6 +225,60 @@ function buildSchedulePayloadFromEditForm(form) {
     };
 }
 
+function buildRepoNotificationsPayloadFromForm(form) {
+    if (!form) return undefined;
+
+    const hcEnabled = !!form.notifyHcEnabled?.checked;
+    const hcUrl = (form.notifyHcUrl?.value || '').trim();
+    const hcKeyword = (form.notifyHcKeyword?.value || '').trim();
+    const hcSendLog = !!form.notifyHcSendLog?.checked;
+
+    const emailEnabled = !!form.notifyEmailEnabled?.checked;
+    const emailTo = (form.notifyEmailTo?.value || '').trim();
+    const emailSubjectPrefix = (form.notifyEmailSubjectPrefix?.value || '').trim();
+    const emailSendLog = !!form.notifyEmailSendLog?.checked;
+
+    const hasHcOverride = hcEnabled || !!hcUrl || !!hcKeyword;
+    const hasEmailOverride = emailEnabled || !!emailTo || !!emailSubjectPrefix;
+    const anyBackupNotifConfig = hasHcOverride || hasEmailOverride;
+
+    if (!anyBackupNotifConfig) {
+        return undefined;
+    }
+
+    // Cuando se configuran notificaciones por backup, enviamos ambos canales con enabled explícito.
+    // Así evitamos heredar un canal global no deseado (p.ej. email) y generar falsos positivos.
+    return {
+        healthchecks: {
+            enabled: hcEnabled,
+            url: hcUrl,
+            successKeyword: hcKeyword,
+            sendLog: hcSendLog,
+        },
+        email: {
+            enabled: emailEnabled,
+            to: emailTo,
+            subjectPrefix: emailSubjectPrefix,
+            sendLog: emailSendLog,
+        },
+    };
+}
+
+function applyRepoNotificationsToForm(form, notifications) {
+    if (!form) return;
+    const n = notifications || {};
+    const hc = n.healthchecks || {};
+    const mail = n.email || {};
+    if (form.notifyHcEnabled) form.notifyHcEnabled.checked = !!hc.enabled;
+    if (form.notifyHcUrl) form.notifyHcUrl.value = hc.url || '';
+    if (form.notifyHcKeyword) form.notifyHcKeyword.value = hc.successKeyword || '';
+    if (form.notifyHcSendLog) form.notifyHcSendLog.checked = hc.sendLog !== false;
+    if (form.notifyEmailEnabled) form.notifyEmailEnabled.checked = !!mail.enabled;
+    if (form.notifyEmailTo) form.notifyEmailTo.value = mail.to || '';
+    if (form.notifyEmailSubjectPrefix) form.notifyEmailSubjectPrefix.value = mail.subjectPrefix || '';
+    if (form.notifyEmailSendLog) form.notifyEmailSendLog.checked = mail.sendLog !== false;
+}
+
 function updateEditScheduleSummary() {
     const form = document.getElementById('edit-repo-form');
     const el = document.getElementById('edit-schedule-summary');
@@ -254,6 +313,56 @@ function toggleEditScheduleFields() {
     updateEditScheduleSummary();
 }
 
+async function testEditRepoNotifications() {
+    const form = document.getElementById('edit-repo-form');
+    if (!form || !form.repoId?.value) return;
+    const btn = document.getElementById('btn-test-repo-notifications');
+    const status = document.getElementById('edit-repo-notify-test-status');
+    const payload = {
+        notifications: buildRepoNotificationsPayloadFromForm(form) || {},
+    };
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Probando...';
+        }
+        if (status) {
+            status.textContent = 'Probando envío a Healthchecks y/o correo...';
+            status.style.color = '';
+        }
+        const result = await API.testRepoNotifications(form.repoId.value, payload);
+        const ch = result.channels || {};
+        const hcOk = ch.healthchecks?.ok;
+        const mailOk = ch.email?.ok;
+        const parts = [];
+        if (hcOk) parts.push('Healthchecks OK');
+        else if (ch.healthchecks?.skipped) parts.push('Healthchecks omitido');
+        else if (ch.healthchecks?.error) parts.push(`Healthchecks ERROR: ${ch.healthchecks.error}`);
+        if (mailOk) parts.push('Email OK');
+        else if (ch.email?.skipped) parts.push('Email omitido');
+        else if (ch.email?.error) parts.push(`Email ERROR: ${ch.email.error}`);
+
+        const msg = parts.join(' · ') || 'Prueba completada';
+        if (status) {
+            status.textContent = msg;
+            status.style.color = result.ok ? 'var(--accent-green)' : 'var(--accent-red)';
+        }
+        showToast((result.ok ? '✅ ' : '⚠️ ') + msg, result.ok ? 'success' : 'warning');
+    } catch (err) {
+        if (status) {
+            status.textContent = 'Error en prueba: ' + err.message;
+            status.style.color = 'var(--accent-red)';
+        }
+        showToast('❌ Error probando notificaciones: ' + err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🧪 Probar notificaciones';
+        }
+    }
+}
+
 async function submitEditRepo(e) {
     e.preventDefault();
     const form = e.target;
@@ -263,6 +372,8 @@ async function submitEditRepo(e) {
         contentSelection: resolveRepoContentSelectionForSubmit('edit', form.repoPath.value),
         schedule: buildSchedulePayloadFromEditForm(form),
     };
+    const repoNotifications = buildRepoNotificationsPayloadFromForm(form);
+    if (repoNotifications) payload.notifications = repoNotifications;
 
     try {
         btn.disabled = true;
@@ -313,6 +424,8 @@ async function submitNewRepo(e) {
             storageId: (form.storageId?.value || '').trim() || undefined,
             contentSelection: resolveRepoContentSelectionForSubmit('new', form.repoPath.value),
         };
+        const repoNotifications = buildRepoNotificationsPayloadFromForm(form);
+        if (repoNotifications) data.notifications = repoNotifications;
 
         await API.createRepo(data);
         showToast(importExisting ? '✅ Backup vinculado exitosamente' : '✅ Backup creado exitosamente', 'success');

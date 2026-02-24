@@ -11,8 +11,9 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from server_py.utils.config_store import repositories as repositories_config
-from server_py.models.schemas import RepoCreate, RepoUpdate, BackupStart, BackupCancelRequest
+from server_py.models.schemas import RepoCreate, RepoUpdate, BackupStart, BackupCancelRequest, RepoNotificationTestRequest
 from server_py.services.duplicacy import service as duplicacy_service
+from server_py.services.notifications import notify_backup_success, test_backup_notifications
 from server_py.core.helpers import (
     sanitize_repo, get_storage_by_id, build_destination_from_storage_ref, 
     resolve_repo_destination, get_storage_env, get_primary_storage, 
@@ -21,6 +22,7 @@ from server_py.core.helpers import (
     active_backups, completed_backups, active_backup_processes, 
     scheduler_task, scheduler_running, remote_storage_list_cache,
     normalize_content_selection, normalize_schedule_config,
+    normalize_repo_notifications_config,
     get_repo_duplicacy_password,
     build_destination_from_update, _repo_snapshot_revisions,
     sync_repo_filters_file,
@@ -207,6 +209,7 @@ async def create_repo(repo: RepoCreate):
         "lastBackupSummary": None,
         "contentSelection": normalize_content_selection(repo.contentSelection),
         "schedule": normalize_schedule_config(repo.schedule),
+        "notifications": normalize_repo_notifications_config(repo.notifications),
     }
     if secrets:
         new_repo["_secrets"] = secrets
@@ -229,6 +232,8 @@ async def update_repo(repo_id: str, req: RepoUpdate):
                 r["contentSelection"] = normalize_content_selection(req.contentSelection)
             if req.schedule is not None:
                 r["schedule"] = normalize_schedule_config(req.schedule, r.get("schedule"))
+            if req.notifications is not None:
+                r["notifications"] = normalize_repo_notifications_config(req.notifications, r.get("notifications"))
         return all_repos
 
     repos_data = repositories_config.atomic_update(apply_update)
@@ -237,6 +242,39 @@ async def update_repo(repo_id: str, req: RepoUpdate):
         raise HTTPException(status_code=404, detail="Repository not found")
 
     return {"ok": True, "repo": sanitize_repo(repo)}
+
+
+@router.post("/api/repos/{repo_id}/test-notifications")
+async def test_repo_notifications(repo_id: str, req: RepoNotificationTestRequest):
+    repos_data = repositories_config.read()
+    repo = next((r for r in repos_data if r["id"] == repo_id), None)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Backup no encontrado")
+
+    effective_repo_notifications = dict(req.notifications or {}) if req.notifications is not None else (repo.get("notifications") or {})
+
+    primary = get_primary_storage(repo)
+    target_label = (primary or {}).get("url") or repo.get("storageUrl") or "—"
+    payload = {
+        "repoName": repo.get("name") or repo.get("snapshotId") or "backup",
+        "snapshotId": repo.get("snapshotId") or "—",
+        "trigger": "manual",
+        "sourcePath": repo.get("path") or "—",
+        "targetLabel": target_label,
+        "finishedAt": datetime.now().isoformat(),
+        "durationSeconds": 0,
+        "backupSummary": {"ok": True, "message": "Prueba manual de notificaciones"},
+        "backupLog": (
+            "Prueba manual de notificaciones desde Editar Backup.\n"
+            f"Backup ID (Snapshot ID): {repo.get('snapshotId') or '—'}\n"
+            f"Destino: {target_label}"
+        ),
+    }
+
+    result = await test_backup_notifications(payload, effective_repo_notifications)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("detail") or "Falló la prueba de notificaciones")
+    return result
 
 
 
@@ -461,6 +499,7 @@ async def start_backup(req: BackupStart):
 
             duration = round(time.monotonic() - started_monotonic, 2)
             was_cancelled = bool((active_backups.get(req.repoId) or {}).get("cancelRequested"))
+            backup_summary_payload = (active_backups.get(req.repoId) or {}).get("backupSummary")
             logger.info(
                 "[Backup] Fin repo=%s nombre=%s resultado=%s codigo=%s duracion_s=%s",
                 req.repoId,
@@ -477,6 +516,33 @@ async def start_backup(req: BackupStart):
                     "CANCELLED" if was_cancelled else ("OK" if result.get('code') == 0 else "ERROR"),
                     duration,
                 )
+
+            if result.get("code") == 0 and not was_cancelled:
+                try:
+                    primary_storage = get_primary_storage(repo) or {}
+                    output_lines = (active_backups.get(req.repoId) or {}).get("outputLines") or []
+                    backup_log_text = "\n".join([str(x) for x in output_lines if str(x).strip()])
+                    if result.get("stdout"):
+                        backup_log_text = (backup_log_text + ("\n" if backup_log_text else "") + str(result.get("stdout") or "")).strip()
+                    notify_payload = {
+                        "repoId": req.repoId,
+                        "repoName": repo.get("name"),
+                        "snapshotId": repo.get("snapshotId"),
+                        "trigger": trigger,
+                        "sourcePath": repo.get("path"),
+                        "targetUrl": (primary_storage.get("url") or repo.get("storageUrl") or ""),
+                        "targetLabel": describe_storage(repo),
+                        "finishedAt": datetime.now().isoformat(),
+                        "durationSeconds": duration,
+                        "backupSummary": backup_summary_payload,
+                        "backupLog": backup_log_text,
+                        "repoNotifications": repo.get("notifications") or {},
+                    }
+                    asyncio.create_task(notify_backup_success(notify_payload))
+                    logger.info("[Notify] Programadas notificaciones de éxito para repo=%s", req.repoId)
+                except Exception:
+                    logger.exception("[Notify] No se pudieron programar notificaciones repo=%s", req.repoId)
+
             completed_backups[req.repoId] = {
                 "done": True,
                 "code": result.get("code", -1),
@@ -484,7 +550,7 @@ async def start_backup(req: BackupStart):
                 "stderr": result.get("stderr", "") or "",
                 "finishedAt": datetime.now().isoformat(),
                 "canceled": was_cancelled,
-                "backupSummary": (active_backups.get(req.repoId) or {}).get("backupSummary"),
+                "backupSummary": backup_summary_payload,
                 "trigger": trigger,
             }
         except Exception:

@@ -39,6 +39,13 @@ const API = {
         });
     },
 
+    async testRepoNotifications(id, payload) {
+        return this._fetch(`/repos/${id}/test-notifications`, {
+            method: 'POST',
+            body: JSON.stringify(payload || {})
+        });
+    },
+
     async createRepo(repoData) {
         return this._fetch('/repos', {
             method: 'POST',
@@ -136,6 +143,13 @@ const API = {
         });
     },
 
+    async testNotificationChannels(payload) {
+        return this._fetch('/system/test-notification-channels', {
+            method: 'POST',
+            body: JSON.stringify(payload || {})
+        });
+    },
+
     // ─── BACKUP ─────────────────────────────────────────
     async startBackup(repoId, password, threads) {
         return this._fetch('/backup/start', {
@@ -207,6 +221,24 @@ const API = {
 
     async readLogFile(filename) {
         return this._fetch(`/config/logs/${filename}`);
+    },
+
+    async queryLogFile(filename, params = {}) {
+        const q = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => {
+            if (v === undefined || v === null || v === '') return;
+            q.set(k, String(v));
+        });
+        return this._fetch(`/config/logs/${encodeURIComponent(filename)}/query?${q.toString()}`);
+    },
+
+    getLogExportUrl(filename, params = {}) {
+        const q = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => {
+            if (v === undefined || v === null || v === '') return;
+            q.set(k, String(v));
+        });
+        return `${this.BASE}/config/logs/${encodeURIComponent(filename)}/export${q.toString() ? `?${q.toString()}` : ''}`;
     },
 
     // ─── HEALTH ─────────────────────────────────────────

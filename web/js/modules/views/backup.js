@@ -1,4 +1,45 @@
 // ─── BACKUP ─────────────────────────────────────────────
+let backupProgressTimer = null;
+let backupProgressStartedAtMs = 0;
+
+function formatProgressElapsed(ms) {
+    const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function setBackupProgressDetails(patch = {}) {
+    const map = {
+        phase: 'backup-progress-phase',
+        elapsed: 'backup-progress-elapsed',
+        snapshot: 'backup-progress-snapshot',
+        target: 'backup-progress-target',
+        lastline: 'backup-progress-lastline',
+    };
+    Object.entries(map).forEach(([key, id]) => {
+        if (!(key in patch)) return;
+        const el = document.getElementById(id);
+        if (el) el.textContent = patch[key] ?? '—';
+    });
+}
+
+function startBackupProgressTimer() {
+    stopBackupProgressTimer();
+    backupProgressStartedAtMs = Date.now();
+    setBackupProgressDetails({ elapsed: '00:00' });
+    backupProgressTimer = setInterval(() => {
+        setBackupProgressDetails({ elapsed: formatProgressElapsed(Date.now() - backupProgressStartedAtMs) });
+    }, 1000);
+}
+
+function stopBackupProgressTimer() {
+    if (backupProgressTimer) {
+        clearInterval(backupProgressTimer);
+        backupProgressTimer = null;
+    }
+}
+
 async function loadBackupView() {
     try {
         const data = await API.getRepos();
@@ -12,6 +53,13 @@ async function loadBackupView() {
             threadsInput.value = '16';
             threadsInput.disabled = true;
         }
+        setBackupProgressDetails({
+            phase: 'Esperando',
+            elapsed: '00:00',
+            snapshot: '—',
+            target: '—',
+            lastline: 'Listo para iniciar',
+        });
         updateBackupRunButtonState();
     } catch (err) {
         showToast('Error cargando backups', 'error');
@@ -85,6 +133,13 @@ async function runBackup(repoId) {
         }
     }
     if (logOutput && threads) logOutput.textContent += `Usando ${threads} hilo(s)\n`;
+    setBackupProgressDetails({
+        phase: 'Inicializando',
+        snapshot: repo?.snapshotId || '—',
+        target: ((primaryStorage && primaryStorage.url) || repo?.storageUrl || '—'),
+        lastline: 'Preparando ejecución...',
+    });
+    startBackupProgressTimer();
     if (progressBar) progressBar.style.width = '0%';
     if (statusText) statusText.textContent = 'Ejecutando backup...';
     currentBackupRunRepoId = repoId;
@@ -95,6 +150,10 @@ async function runBackup(repoId) {
         if (data.error) {
             streamDisconnected = true;
             if (statusText) statusText.textContent = 'Backup en curso (seguimiento desconectado)';
+            setBackupProgressDetails({
+                phase: 'Seguimiento desconectado',
+                lastline: 'Se perdió la conexión de progreso. El backup puede seguir en ejecución.',
+            });
             if (logOutput) {
                 logOutput.textContent += '\n⚠️ Se perdió la conexión de progreso. El backup puede seguir ejecutándose en el servidor.\n';
                 logOutput.scrollTop = logOutput.scrollHeight;
@@ -108,6 +167,7 @@ async function runBackup(repoId) {
                 currentBackupEventSource.close();
                 currentBackupEventSource = null;
             }
+            stopBackupProgressTimer();
             if (logOutput && data.backupSummary && !data.canceled) {
                 const s = data.backupSummary;
                 logOutput.textContent += '\n--- Resumen del backup ---\n';
@@ -154,6 +214,13 @@ async function runBackup(repoId) {
                 else if (data.success === false) statusText.textContent = 'Error en backup';
                 else if (!streamDisconnected) statusText.textContent = 'Backup completado';
             }
+            setBackupProgressDetails({
+                phase: data.canceled ? 'Cancelado' : (data.success === false ? 'Error' : 'Completado'),
+                elapsed: formatProgressElapsed(Date.now() - backupProgressStartedAtMs),
+                lastline: data.canceled
+                    ? 'Cancelado por el usuario'
+                    : (data.success === false ? 'Finalizado con error' : 'Backup completado correctamente'),
+            });
             currentBackupRunRepoId = null;
             updateBackupRunButtonState(false);
             loadDashboard();
@@ -166,6 +233,10 @@ async function runBackup(repoId) {
                     ? `Procesando backup... (${elapsedSec}s)`
                     : `Escaneando archivos (sin salida aún)... (${elapsedSec}s)`;
             }
+            setBackupProgressDetails({
+                phase: seenDuplicacyOutput ? 'Procesando' : 'Escaneando',
+                lastline: seenDuplicacyOutput ? 'Procesando bloques/archivos...' : 'Escaneando archivos (Duplicacy aún no muestra salida)...',
+            });
             if (progressBar && !seenDuplicacyOutput) {
                 progressBar.style.width = '12%';
             }
@@ -178,6 +249,8 @@ async function runBackup(repoId) {
         if (data.output && logOutput) {
             seenDuplicacyOutput = true;
             if (statusText) statusText.textContent = 'Recibiendo salida de Duplicacy...';
+            const lastLine = String(data.output || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Salida de Duplicacy';
+            setBackupProgressDetails({ phase: 'Ejecutando', lastline: lastLine });
             if (progressBar && Number((progressBar.style.width || '0').replace('%', '')) < 35) {
                 progressBar.style.width = '35%';
             }
@@ -196,9 +269,15 @@ async function runBackup(repoId) {
     } catch (err) {
         if (evtSource) evtSource.close();
         if (currentBackupEventSource === evtSource) currentBackupEventSource = null;
+        stopBackupProgressTimer();
         showToast('❌ Backup falló: ' + err.message, 'error');
         if (logOutput) logOutput.textContent += '\n❌ Error: ' + err.message + '\n';
         if (statusText) statusText.textContent = 'Error en backup';
+        setBackupProgressDetails({
+            phase: 'Error',
+            elapsed: backupProgressStartedAtMs ? formatProgressElapsed(Date.now() - backupProgressStartedAtMs) : '00:00',
+            lastline: err.message || 'Error iniciando backup',
+        });
         currentBackupRunRepoId = null;
         updateBackupRunButtonState(false);
     }

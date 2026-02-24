@@ -32,7 +32,7 @@ from server_py.models.schemas import (
     RepoCreate, BackupStart, BackupCancelRequest, RestoreRequest, StorageRestoreRequest,
     WasabiConnectionTest, WasabiSnapshotDetectRequest, RepoUpdate, StorageCreate, StorageUpdate
 )
-from .storage_helpers import (sanitize_storage, get_storage_by_id, get_repo_storage, get_primary_storage, describe_storage, get_storage_env, get_repo_duplicacy_password, build_wasabi_env, get_storage_record_env, build_wasabi_storage_url, resolve_repo_destination, infer_repo_destination_type, build_destination_from_update, build_destination_from_storage_ref, list_all_storages_for_ui)
+from .storage_helpers import (sanitize_storage, get_storage_by_id, get_repo_storage, get_primary_storage, describe_storage, get_storage_env, get_repo_duplicacy_password, build_wasabi_env, get_storage_record_env, build_wasabi_storage_url, resolve_repo_destination, infer_repo_destination_type, build_destination_from_update, build_destination_from_storage_ref, list_all_storages_for_ui, repo_matches_storage_record)
 
 logger = get_logger("Helpers")
 
@@ -52,6 +52,18 @@ def sanitize_repo(repo: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = dict(repo)
     for key in INTERNAL_SECRET_KEYS:
         sanitized.pop(key, None)
+    # Resolver storage real por tipo + URL para no depender de storageRefId obsoleto.
+    try:
+        explicit_storages = [s for s in list_all_storages_for_ui() if (s.get("source") or "managed") == "managed"]
+        resolved = next((s for s in explicit_storages if repo_matches_storage_record(repo, s)), None)
+        sanitized["resolvedStorageRefId"] = resolved.get("id") if resolved else None
+        sanitized["storageRefIdStale"] = bool(
+            repo.get("storageRefId") and sanitized["resolvedStorageRefId"] and repo.get("storageRefId") != sanitized["resolvedStorageRefId"]
+        )
+    except Exception:
+        # Nunca romper listados UI por un fallo de resolución.
+        sanitized["resolvedStorageRefId"] = repo.get("storageRefId")
+        sanitized["storageRefIdStale"] = False
     return sanitized
 
 
@@ -169,6 +181,35 @@ def normalize_schedule_config(schedule_raw: Optional[Dict[str, Any]], existing: 
     next_run = compute_next_run_for_schedule(normalized)
     normalized["nextRunAt"] = next_run.isoformat() if next_run else None
     return normalized
+
+
+def normalize_repo_notifications_config(
+    notifications_raw: Optional[Dict[str, Any]],
+    existing: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    existing = dict(existing or {})
+    raw = dict(notifications_raw or {})
+    existing_hc = dict(existing.get("healthchecks") or {})
+    existing_mail = dict(existing.get("email") or {})
+    raw_hc = dict(raw.get("healthchecks") or {})
+    raw_mail = dict(raw.get("email") or {})
+
+    def _bool(v, default=False):
+        return default if v is None else bool(v)
+
+    hc = {
+        "enabled": _bool(raw_hc.get("enabled"), existing_hc.get("enabled", False)),
+        "url": str(raw_hc.get("url", existing_hc.get("url", "")) or "").strip(),
+        "successKeyword": str(raw_hc.get("successKeyword", existing_hc.get("successKeyword", "")) or "").strip(),
+        "sendLog": _bool(raw_hc.get("sendLog"), existing_hc.get("sendLog", True)),
+    }
+    mail = {
+        "enabled": _bool(raw_mail.get("enabled"), existing_mail.get("enabled", False)),
+        "to": str(raw_mail.get("to", existing_mail.get("to", "")) or "").strip(),
+        "subjectPrefix": str(raw_mail.get("subjectPrefix", existing_mail.get("subjectPrefix", "")) or "").strip(),
+        "sendLog": _bool(raw_mail.get("sendLog"), existing_mail.get("sendLog", True)),
+    }
+    return {"healthchecks": hc, "email": mail}
 
 
 def _parse_iso_datetime(value: Any) -> Optional[datetime]:

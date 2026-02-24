@@ -21,6 +21,7 @@ class RepoCreate(BaseModel):
     encrypt: Optional[bool] = None
     contentSelection: Optional[List[str]] = None
     schedule: Optional[Dict[str, Any]] = None
+    notifications: Optional[Dict[str, Any]] = None
 
 class BackupStart(BaseModel):
     repoId: str
@@ -79,6 +80,10 @@ class RepoUpdate(BaseModel):
     wasabiAccessKey: Optional[str] = None
     contentSelection: Optional[List[str]] = None
     schedule: Optional[Dict[str, Any]] = None
+    notifications: Optional[Dict[str, Any]] = None
+
+class RepoNotificationTestRequest(BaseModel):
+    notifications: Optional[Dict[str, Any]] = None
 
 class StorageCreate(BaseModel):
     name: str

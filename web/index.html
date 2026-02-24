@@ -260,6 +260,17 @@
               </div>
             </div>
 
+            <div class="card" style="padding:12px 14px; margin-bottom:16px;">
+              <div class="form-label" style="margin-bottom:8px;">Detalles de progreso</div>
+              <div style="display:grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap:8px 14px; font-size:12px;">
+                <div><strong>Fase:</strong> <span id="backup-progress-phase">Esperando</span></div>
+                <div><strong>Tiempo:</strong> <span id="backup-progress-elapsed">00:00</span></div>
+                <div><strong>Backup ID:</strong> <span id="backup-progress-snapshot">—</span></div>
+                <div><strong>Destino:</strong> <span id="backup-progress-target">—</span></div>
+                <div style="grid-column:1 / -1;"><strong>Última línea:</strong> <span id="backup-progress-lastline" style="color:var(--text-muted);">—</span></div>
+              </div>
+            </div>
+
             <div class="log-section">
               <label class="form-label">Log de ejecución</label>
               <div id="backup-log" class="log-output" style="min-height: 400px;">
@@ -280,15 +291,15 @@
           <div class="card" style="max-width: 700px">
             <form onsubmit="submitRestore(event)">
               <div class="form-group">
-                <label class="form-label">Repositorio de destino</label>
+                <label class="form-label">Destino de copias (Storage)</label>
                 <select id="restore-storage-select" class="form-select" required onchange="onRestoreStorageChange()">
-                  <option value="">-- Seleccionar repositorio de destino --</option>
+                  <option value="">-- Seleccionar destino (storage) --</option>
                 </select>
-                <span class="form-hint">Selecciona el repositorio (storage) donde están las copias.</span>
+                <span class="form-hint">Selecciona el destino donde están las copias (Wasabi, local, FTP, OneDrive, etc.).</span>
               </div>
 
               <div class="form-group">
-                <label class="form-label">Snapshot ID</label>
+                <label class="form-label">Backup ID (Snapshot ID)</label>
                 <select id="restore-repo-select" class="form-select" required onchange="onRestoreRepoChange()">
                   <option value="">-- Selecciona un destino primero --</option>
                 </select>
@@ -328,7 +339,7 @@
                 </div>
                 <span class="form-hint"
                   id="restore-revision-hint"
-                  >Al seleccionar un Snapshot ID, se cargarán las revisiones disponibles.</span
+                  >Al seleccionar un Backup ID (Snapshot ID), se cargarán las revisiones disponibles.</span
                 >
               </div>
 
@@ -370,6 +381,19 @@
               </p>
             </div>
 
+            <div class="card" style="padding:12px 14px; margin-top:12px;">
+              <div class="form-label" style="margin-bottom:8px;">Detalles de progreso</div>
+              <div style="display:grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap:8px 14px; font-size:12px;">
+                <div><strong>Fase:</strong> <span id="restore-progress-phase">Esperando</span></div>
+                <div><strong>Tiempo:</strong> <span id="restore-progress-elapsed">00:00</span></div>
+                <div><strong>Backup ID:</strong> <span id="restore-progress-snapshot">—</span></div>
+                <div><strong>Revisión:</strong> <span id="restore-progress-revision">—</span></div>
+                <div><strong>Destino de restauración:</strong> <span id="restore-progress-target">—</span></div>
+                <div><strong>Modo:</strong> <span id="restore-progress-mode">Completo</span></div>
+                <div style="grid-column:1 / -1;"><strong>Último mensaje:</strong> <span id="restore-progress-lastline" style="color:var(--text-muted);">—</span></div>
+              </div>
+            </div>
+
             <div style="margin-top: 16px">
               <span class="form-label">Log de restauración</span>
               <div id="restore-log" class="log-output" style="margin-top: 8px">
@@ -386,7 +410,7 @@
             <p>Ajustes generales de DupliManager</p>
           </div>
 
-          <div class="card" style="max-width: 700px">
+          <div class="card" style="max-width: 960px">
             <form onsubmit="saveSettings(event)">
               <div class="settings-section">
                 <h3>🔧 General</h3>
@@ -428,6 +452,111 @@
                 </div>
               </div>
 
+              <div class="settings-section">
+                <h3>💓 Healthchecks (backup exitoso)</h3>
+                <div class="form-group">
+                  <label class="form-checkbox">
+                    <input type="checkbox" id="setting-hc-enabled" />
+                    <span>Enviar señal de vida al terminar un backup con éxito</span>
+                  </label>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">URL Healthchecks</label>
+                  <input
+                    type="url"
+                    id="setting-hc-url"
+                    class="form-input"
+                    placeholder="https://hc-ping.com/tu-uuid"
+                  />
+                  <span class="form-hint">Se enviará un POST con texto (incluyendo palabra de éxito y resumen del backup).</span>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 180px; gap:12px;">
+                  <div>
+                    <label class="form-label">Palabra de éxito</label>
+                    <input type="text" id="setting-hc-keyword" class="form-input" placeholder="success" />
+                    <span class="form-hint">Ej.: <code>success</code> o <code>exito</code> según tu filtro en Healthchecks.</span>
+                  </div>
+                  <div>
+                    <label class="form-label">Timeout (seg)</label>
+                    <input type="number" min="3" max="60" id="setting-hc-timeout" class="form-input" value="10" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-checkbox">
+                    <input type="checkbox" id="setting-hc-send-log" />
+                    <span>Incluir log del backup en el body del ping</span>
+                  </label>
+                </div>
+                <div class="form-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-test-hc-global" onclick="testGlobalHealthchecksNotification()">
+                    🧪 Probar Healthchecks
+                  </button>
+                  <span id="setting-hc-test-status" class="form-hint">Prueba solo el envío HTTP al endpoint configurado.</span>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>✉️ Email (backup exitoso)</h3>
+                <div class="form-group">
+                  <label class="form-checkbox">
+                    <input type="checkbox" id="setting-email-enabled" />
+                    <span>Enviar email al terminar un backup con éxito</span>
+                  </label>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1.2fr 120px; gap:12px;">
+                  <div>
+                    <label class="form-label">Servidor SMTP</label>
+                    <input type="text" id="setting-email-smtp-host" class="form-input" placeholder="smtp.tudominio.com" />
+                  </div>
+                  <div>
+                    <label class="form-label">Puerto</label>
+                    <input type="number" id="setting-email-smtp-port" class="form-input" value="587" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-checkbox">
+                    <input type="checkbox" id="setting-email-starttls" />
+                    <span>Usar STARTTLS</span>
+                  </label>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label class="form-label">Usuario SMTP</label>
+                    <input type="text" id="setting-email-user" class="form-input" placeholder="usuario@dominio.com" />
+                  </div>
+                  <div>
+                    <label class="form-label">Contraseña SMTP</label>
+                    <input type="password" id="setting-email-pass" class="form-input" placeholder="••••••••" />
+                  </div>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label class="form-label">Email remitente</label>
+                    <input type="email" id="setting-email-from" class="form-input" placeholder="backup@dominio.com" />
+                  </div>
+                  <div>
+                    <label class="form-label">Email destino</label>
+                    <input type="email" id="setting-email-to" class="form-input" placeholder="soporte@dominio.com" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Prefijo del asunto</label>
+                  <input type="text" id="setting-email-subject-prefix" class="form-input" placeholder="[DupliManager]" />
+                </div>
+                <div class="form-group">
+                  <label class="form-checkbox">
+                    <input type="checkbox" id="setting-email-send-log" />
+                    <span>Incluir log del backup en el email</span>
+                  </label>
+                </div>
+                <div class="form-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-test-email-global" onclick="testGlobalEmailNotification()">
+                    🧪 Probar Email
+                  </button>
+                  <span id="setting-email-test-status" class="form-hint">Prueba solo el envío por SMTP con la configuración global.</span>
+                </div>
+              </div>
+
               <button type="submit" class="btn btn-primary" style="width: 100%">
                 💾 Guardar Configuración
               </button>
@@ -442,21 +571,20 @@
             <p>Registros de actividad de DupliManager</p>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px">
-            <div>
-              <h3 style="font-size: 14px; margin-bottom: 12px">
-                Archivos de Log
-              </h3>
-              <div id="log-files-list">
-                <div class="empty-state"><div class="spinner"></div></div>
+          <div class="logs-layout">
+            <div class="logs-content-pane">
+              <div class="logs-file-picker">
+                <label for="log-file-select" class="form-label" style="margin:0;">Archivo de log</label>
+                <select id="log-file-select" class="form-select">
+                  <option value="">-- Selecciona un archivo --</option>
+                </select>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="loadLogsView()">🔄 Actualizar</button>
               </div>
-            </div>
-            <div>
-              <h3 style="font-size: 14px; margin-bottom: 12px">Contenido</h3>
+
               <div
                 id="log-viewer"
                 class="log-output"
-                style="display: none; min-height: 400px"
+                style="display: none"
               ></div>
               <div id="log-placeholder" class="empty-state">
                 <p>Selecciona un archivo de log para ver su contenido.</p>
@@ -558,6 +686,59 @@
               </span>
             </div>
 
+            <div class="form-group" style="border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+              <label class="form-label" style="margin-bottom:10px;">Notificaciones de éxito (este backup)</label>
+              <div class="form-group" style="margin:0 0 10px 0;">
+                <label class="form-checkbox">
+                  <input type="checkbox" name="notifyHcEnabled" />
+                  <span>Healthchecks para este backup</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:0 0 10px 0;">
+                <label class="form-label">URL Healthchecks (override)</label>
+                <input type="url" name="notifyHcUrl" class="form-input" placeholder="https://hc-ping.com/tu-uuid" />
+              </div>
+              <div class="form-group" style="margin:0 0 10px 0; display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:end;">
+                <div>
+                  <label class="form-label">Palabra de éxito (override)</label>
+                  <input type="text" name="notifyHcKeyword" class="form-input" placeholder="success" />
+                </div>
+                <label class="form-checkbox" style="margin-bottom:8px;">
+                  <input type="checkbox" name="notifyHcSendLog" />
+                  <span>Incluir log</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:6px 0 10px 0;">
+                <label class="form-checkbox">
+                  <input type="checkbox" name="notifyEmailEnabled" />
+                  <span>Email para este backup</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:0 0 10px 0; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div>
+                  <label class="form-label">Email destino (override)</label>
+                  <input type="email" name="notifyEmailTo" class="form-input" placeholder="soporte@dominio.com" />
+                </div>
+                <div>
+                  <label class="form-label">Prefijo asunto (override)</label>
+                  <input type="text" name="notifyEmailSubjectPrefix" class="form-input" placeholder="[DupliManager]" />
+                </div>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-checkbox">
+                  <input type="checkbox" name="notifyEmailSendLog" />
+                  <span>Incluir log en email</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:12px 0 0 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-test-repo-notifications" onclick="testEditRepoNotifications()">
+                  🧪 Probar notificaciones
+                </button>
+                <span id="edit-repo-notify-test-status" class="form-hint">Prueba el envío real a Healthchecks y/o correo con esta configuración.</span>
+              </div>
+              <span class="form-hint" style="display:block; margin-top:8px;">SMTP y valores globales se configuran en Configuración. Aquí puedes poner URL/correo propios por backup.</span>
+            </div>
+
             <div class="form-group" style="background: var(--bg-secondary); border-radius: 12px; padding: 14px; border: 1px dashed var(--border-color);">
               <label class="form-label">Repositorio de destino (Solo lectura)</label>
               <div id="edit-repo-storage-display" style="font-size: 13px; font-weight: 500; color: var(--text-main);">
@@ -649,6 +830,53 @@
                 <option value="import">Existente (Vincular a copia en destino)</option>
               </select>
               <span id="new-repo-mode-hint" class="form-hint"></span>
+            </div>
+
+            <div class="form-group" style="border:1px solid var(--border-color); border-radius:12px; padding:14px;">
+              <label class="form-label" style="margin-bottom:10px;">Notificaciones de éxito (este backup)</label>
+              <div class="form-group" style="margin:0 0 10px 0;">
+                <label class="form-checkbox">
+                  <input type="checkbox" name="notifyHcEnabled" />
+                  <span>Healthchecks para este backup</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:0 0 10px 0;">
+                <label class="form-label">URL Healthchecks (override)</label>
+                <input type="url" name="notifyHcUrl" class="form-input" placeholder="https://hc-ping.com/tu-uuid" />
+              </div>
+              <div class="form-group" style="margin:0 0 10px 0; display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:end;">
+                <div>
+                  <label class="form-label">Palabra de éxito (override)</label>
+                  <input type="text" name="notifyHcKeyword" class="form-input" placeholder="success" />
+                </div>
+                <label class="form-checkbox" style="margin-bottom:8px;">
+                  <input type="checkbox" name="notifyHcSendLog" />
+                  <span>Incluir log</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:6px 0 10px 0;">
+                <label class="form-checkbox">
+                  <input type="checkbox" name="notifyEmailEnabled" />
+                  <span>Email para este backup</span>
+                </label>
+              </div>
+              <div class="form-group" style="margin:0 0 10px 0; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div>
+                  <label class="form-label">Email destino (override)</label>
+                  <input type="email" name="notifyEmailTo" class="form-input" placeholder="soporte@dominio.com" />
+                </div>
+                <div>
+                  <label class="form-label">Prefijo asunto (override)</label>
+                  <input type="text" name="notifyEmailSubjectPrefix" class="form-input" placeholder="[DupliManager]" />
+                </div>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-checkbox">
+                  <input type="checkbox" name="notifyEmailSendLog" />
+                  <span>Incluir log en email</span>
+                </label>
+              </div>
+              <span class="form-hint" style="display:block; margin-top:8px;">SMTP y valores globales se configuran en Configuración. Aquí puedes poner URL/correo propios por backup.</span>
             </div>
 
             <!-- 4. Backup ID -->

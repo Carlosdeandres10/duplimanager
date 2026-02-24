@@ -1,4 +1,48 @@
 // ─── RESTORE ────────────────────────────────────────────
+let restoreProgressTimer = null;
+let restoreProgressStartedAtMs = 0;
+let restoreRunInProgress = false;
+
+function formatRestoreElapsed(ms) {
+    const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function setRestoreProgressDetails(patch = {}) {
+    const ids = {
+        phase: 'restore-progress-phase',
+        elapsed: 'restore-progress-elapsed',
+        snapshot: 'restore-progress-snapshot',
+        revision: 'restore-progress-revision',
+        target: 'restore-progress-target',
+        mode: 'restore-progress-mode',
+        lastline: 'restore-progress-lastline',
+    };
+    for (const [k, id] of Object.entries(ids)) {
+        if (!(k in patch)) continue;
+        const el = document.getElementById(id);
+        if (el) el.textContent = patch[k] ?? '—';
+    }
+}
+
+function startRestoreProgressTimer() {
+    stopRestoreProgressTimer();
+    restoreProgressStartedAtMs = Date.now();
+    setRestoreProgressDetails({ elapsed: '00:00' });
+    restoreProgressTimer = setInterval(() => {
+        setRestoreProgressDetails({ elapsed: formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs) });
+    }, 1000);
+}
+
+function stopRestoreProgressTimer() {
+    if (restoreProgressTimer) {
+        clearInterval(restoreProgressTimer);
+        restoreProgressTimer = null;
+    }
+}
+
 async function loadRestoreView() {
     try {
         const [reposData, storagesData] = await Promise.all([
@@ -19,7 +63,7 @@ async function loadRestoreView() {
         revisionList.innerHTML = '<option value="">-- Selecciona una revisión --</option>';
     }
     const hint = document.getElementById('restore-revision-hint');
-    if (hint) hint.textContent = 'Selecciona primero un repositorio de destino y un backup.';
+    if (hint) hint.textContent = 'Selecciona primero un destino (storage) y un Backup ID.';
     restoreFileEntries = [];
     restoreFilteredEntries = [];
     restoreSelectedPatterns = new Set();
@@ -30,6 +74,17 @@ async function loadRestoreView() {
     if (pathFilter) pathFilter.value = '';
     const restoreAll = document.getElementById('restore-all-toggle');
     if (restoreAll) restoreAll.checked = true;
+    if (!restoreRunInProgress) {
+        setRestoreProgressDetails({
+            phase: 'Esperando',
+            elapsed: '00:00',
+            snapshot: '—',
+            revision: '—',
+            target: '—',
+            mode: 'Completo',
+            lastline: 'Listo para restaurar',
+        });
+    }
     toggleRestoreAllMode();
 }
 
@@ -53,7 +108,12 @@ function getRestoreSelectionContext() {
     }
     if (raw.startsWith('remote:')) {
         const snapshotId = raw.slice(7);
-        return { kind: 'remote', storage, storageId: storage?.id || '', snapshotId };
+        const repo = repos.find(r =>
+            r &&
+            String(r.snapshotId || '').trim() === snapshotId &&
+            repoMatchesRestoreStorage(r, storage)
+        ) || null;
+        return { kind: 'remote', storage, storageId: storage?.id || '', snapshotId, repoId: repo?.id || null, repo };
     }
     // compat valores antiguos (repoId directo)
     const repo = repos.find(r => r.id === raw) || null;
@@ -63,11 +123,25 @@ function getRestoreSelectionContext() {
 
 function repoMatchesRestoreStorage(repo, storage) {
     if (!repo || !storage) return false;
-    if (repo.storageRefId && storage.id && repo.storageRefId === storage.id) return true;
+    if (repo.resolvedStorageRefId && storage.id) {
+        return repo.resolvedStorageRefId === storage.id;
+    }
     const primary = getPrimaryStorage(repo);
+    const repoType = String((primary && primary.type) || '').toLowerCase();
+    const storageType = String(storage.type || '').toLowerCase();
     const repoUrl = normalizeStorageComparableUrl((primary && primary.url) || repo.storageUrl || '');
     const storageUrl = normalizeStorageComparableUrl(storage.url || storage.localPath || '');
-    return !!repoUrl && !!storageUrl && repoUrl === storageUrl;
+
+    // Si el backup ya declara un destino real (storages[] / storageUrl), eso manda.
+    // Evita mezclar backups con storageRefId obsoleto tras cambios de destino.
+    if (repoUrl && storageUrl) {
+        if (repoType && storageType && repoType !== storageType) return false;
+        return repoUrl === storageUrl;
+    }
+
+    // Fallback legacy: solo si no hay URL resoluble, usar storageRefId.
+    if (repo.storageRefId && storage.id && repo.storageRefId === storage.id) return true;
+    return false;
 }
 
 function populateRestoreStorageSelect() {
@@ -76,7 +150,7 @@ function populateRestoreStorageSelect() {
     const prev = select.value || '';
     const options = (storages || []).map(s => {
         const typeLabel = (s.type || '').toLowerCase() === 'wasabi' ? 'Wasabi' : 'Local';
-        const label = `${s.name || s.label || 'Repositorio'} (${typeLabel})`;
+        const label = `${s.name || s.label || 'Storage'} (${typeLabel})`;
         return `<option value="${escapeHtml(s.id)}">${escapeHtml(label)}</option>`;
     });
     select.innerHTML = '<option value="">-- Seleccionar destino --</option>' + options.join('');
@@ -91,35 +165,49 @@ function populateRestoreBackupSelect() {
     if (!select) return;
     const prev = select.value || '';
     if (!storageId) {
-        select.innerHTML = '<option value="">-- Selecciona un destino primero --</option>';
+        select.innerHTML = '<option value="">-- Selecciona un storage primero --</option>';
         return;
     }
     const storage = (storages || []).find(s => s.id === storageId);
     const filtered = storage ? repos.filter(r => repoMatchesRestoreStorage(r, storage)) : [];
     const remoteSnapshots = Array.isArray(restoreStorageSnapshotsCache[storageId]) ? restoreStorageSnapshotsCache[storageId] : [];
-    const localSnapshotIds = new Set(filtered.map(r => String(r.snapshotId || '').trim()).filter(Boolean));
-    const remoteOnly = remoteSnapshots.filter(s => !localSnapshotIds.has(String(s.snapshotId || '').trim()));
-    if (!filtered.length && !remoteOnly.length) {
+    const isWasabi = String(storage?.type || '').toLowerCase() === 'wasabi';
+
+    if (isWasabi && !remoteSnapshots.length) {
+        select.innerHTML = '<option value="">-- No se encontraron Snapshot IDs en este storage --</option>';
+        return;
+    }
+
+    if (!isWasabi && !filtered.length) {
         select.innerHTML = '<option value="">-- No hay backups para este destino --</option>';
         return;
     }
-    const localOpts = filtered.map(r => {
-            const label = `${r.name} · ${r.snapshotId || 'sin Backup ID'} · ${r.path || 'sin ruta'}`;
-            return `<option value="repo:${escapeAttr(r.id)}">${escapeHtml(label)}</option>`;
+
+    let options = [];
+    if (isWasabi) {
+        options = remoteSnapshots.map(s => {
+            const snapshotId = String(s.snapshotId || '').trim();
+            const linkedRepo = filtered.find(r => String(r.snapshotId || '').trim() === snapshotId);
+            const linkedLabel = linkedRepo ? ` · vinculado: ${linkedRepo.name || linkedRepo.snapshotId}` : '';
+            const label = `${snapshotId} · remoto (${s.revisions || 0} rev)${linkedLabel}`;
+            return { value: `remote:${snapshotId}`, html: `<option value="remote:${escapeAttr(snapshotId)}">${escapeHtml(label)}</option>` };
         });
-    const remoteOpts = remoteOnly.map(s => {
-        const label = `${s.snapshotId} · remoto (${s.revisions || 0} rev)`;
-        return `<option value="remote:${escapeAttr(s.snapshotId)}">${escapeHtml(label)}</option>`;
-    });
-    select.innerHTML = '<option value="">-- Seleccionar backup --</option>' + [...localOpts, ...remoteOpts].join('');
-    const canRestorePrev = (filtered.some(r => `repo:${r.id}` === prev) || remoteOnly.some(s => `remote:${s.snapshotId}` === prev));
+    } else {
+        options = filtered.map(r => {
+            const label = `${r.snapshotId || 'sin Snapshot ID'} · local (${r.name || 'sin nombre'})`;
+            return { value: `repo:${r.id}`, html: `<option value="repo:${escapeAttr(r.id)}">${escapeHtml(label)}</option>` };
+        });
+    }
+
+    select.innerHTML = '<option value="">-- Seleccionar backup --</option>' + options.map(o => o.html).join('');
+    const canRestorePrev = options.some(o => o.value === prev);
     if (prev && canRestorePrev) {
         select.value = prev;
     }
 
     const wrap = document.getElementById('restore-repo-wrap');
     if (wrap) {
-        wrap.style.display = (localOpts.length || remoteOpts.length) ? 'block' : 'none';
+        wrap.style.display = options.length ? 'block' : 'none';
     }
 }
 
@@ -135,9 +223,13 @@ async function onRestoreStorageChange() {
     if (revisionHint && storageId) {
         revisionHint.textContent = 'Cargando Backup IDs del destino... (en storages grandes puede tardar)';
     }
-    if (storageId && Array.isArray(restoreStorageSnapshotsCache[storageId])) {
+    const storage = (storages || []).find(s => s.id === storageId);
+    const isWasabi = String(storage?.type || '').toLowerCase() === 'wasabi';
+    if (!isWasabi && storageId) {
+        // En local (MVP), usamos backups locales ya configurados para ese destino.
+    } else if (storageId && Array.isArray(restoreStorageSnapshotsCache[storageId])) {
         // Reuse cached IDs for this session to avoid long waits on every reselect.
-    } else if (storageId) {
+    } else if (storageId && isWasabi) {
         try {
             const result = await API.getStorageSnapshots(storageId);
             restoreStorageSnapshotsCache[storageId] = result.snapshots || [];
@@ -166,7 +258,7 @@ async function onRestoreStorageChange() {
         const revisionList = document.getElementById('restore-revision-list');
         if (revisionList) revisionList.innerHTML = '<option value="">-- Selecciona un backup primero --</option>';
         const hint = document.getElementById('restore-revision-hint');
-        if (hint) hint.textContent = 'Selecciona un backup del destino elegido para consultar revisiones.';
+        if (hint) hint.textContent = 'Selecciona un Backup ID del storage elegido para consultar revisiones.';
         resetRestorePartialSelection();
     }
 }
@@ -202,7 +294,7 @@ async function loadRestoreRevisions() {
 
     if (!ctx.kind) {
         list.innerHTML = '<option value="">-- Selecciona un backup primero --</option>';
-        if (hint) hint.textContent = 'Selecciona un backup para consultar sus revisiones.';
+        if (hint) hint.textContent = 'Selecciona un Backup ID para consultar sus revisiones.';
         resetRestorePartialSelection();
         return;
     }
@@ -263,7 +355,7 @@ async function loadRestoreFilesForSelectedRevision() {
     if (!ctx.kind || !revision) {
         resetRestorePartialSelection();
         if (pathHint) pathHint.textContent = 'Selecciona una revisión para cargar archivos y carpetas.';
-        showToast('Debes seleccionar un origen de destino y una revisión antes de cargar las rutas.', 'warning');
+        showToast('Debes seleccionar un storage, un Backup ID y una revisión antes de cargar las rutas.', 'warning');
         return;
     }
 
@@ -576,9 +668,11 @@ function updateRestoreSelectionUiState() {
     if (!pathHint) return;
 
     if (isRestoreAllMode()) {
+        setRestoreProgressDetails({ mode: 'Completo' });
         pathHint.textContent = 'Se restaurará todo el snapshot. Desmarca la opción para seleccionar ficheros/carpetas concretos.';
         return;
     }
+    setRestoreProgressDetails({ mode: `Parcial (${restoreSelectedPatterns.size} seleccionado/s)` });
 
     const selected = restoreSelectedPatterns.size;
     const total = restoreFileEntries.length;
@@ -673,7 +767,8 @@ function getPathParent(path, isDir) {
 async function restoreFromSnapshot(repoId, revision) {
     if (!confirm(`¿Restaurar revisión #${revision}? Esto sobrescribirá los archivos actuales.`)) return;
 
-    navigateTo('restore');
+    restoreRunInProgress = true;
+    if (currentView !== 'restore') navigateTo('restore');
 
     const logOutput = document.getElementById('restore-log');
     const statusText = document.getElementById('restore-status');
@@ -682,6 +777,15 @@ async function restoreFromSnapshot(repoId, revision) {
     if (statusText) statusText.textContent = 'Restaurando...';
     const restorePath = (document.getElementById('restore-target-path')?.value || '').trim();
     const patterns = getSelectedRestorePatterns();
+    const repo = repos.find(r => r.id === repoId) || null;
+    setRestoreProgressDetails({
+        phase: 'Preparando',
+        snapshot: repo?.snapshotId || '—',
+        revision: `#${revision}`,
+        target: restorePath || repo?.path || 'Carpeta original del backup',
+        mode: isRestoreAllMode() ? 'Completo' : `Parcial (${patterns.length} seleccionado/s)`,
+        lastline: 'Preparando restauración local...',
+    });
     if (logOutput && restorePath) {
         logOutput.textContent += `Ruta destino: ${restorePath}\n`;
     }
@@ -696,6 +800,8 @@ async function restoreFromSnapshot(repoId, revision) {
     }
 
     try {
+        startRestoreProgressTimer();
+        setRestoreProgressDetails({ phase: 'Restaurando', lastline: 'Ejecutando Duplicacy restore...' });
         const result = await API.restore(
             repoId,
             revision,
@@ -706,11 +812,26 @@ async function restoreFromSnapshot(repoId, revision) {
         );
         if (logOutput) logOutput.textContent += '\n' + (result.output || 'Restauración completada') + '\n';
         if (statusText) statusText.textContent = 'Restauración completada';
+        stopRestoreProgressTimer();
+        const outputLast = String(result.output || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Restauración completada';
+        setRestoreProgressDetails({
+            phase: 'Completada',
+            elapsed: formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs),
+            lastline: outputLast,
+        });
         showToast('✅ Restauración completada', 'success');
     } catch (err) {
         if (logOutput) logOutput.textContent += '\n❌ Error: ' + err.message + '\n';
         if (statusText) statusText.textContent = 'Error en restauración';
+        stopRestoreProgressTimer();
+        setRestoreProgressDetails({
+            phase: 'Error',
+            elapsed: restoreProgressStartedAtMs ? formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs) : '00:00',
+            lastline: err.message || 'Error de restauración',
+        });
         showToast('❌ Error: ' + err.message, 'error');
+    } finally {
+        restoreRunInProgress = false;
     }
 }
 
@@ -748,8 +869,19 @@ async function submitRestore(e) {
         }
     }
     if (statusText) statusText.textContent = 'Restaurando desde storage...';
+    setRestoreProgressDetails({
+        phase: 'Preparando',
+        snapshot: ctx.snapshotId || '—',
+        revision: `#${revision}`,
+        target: restorePath || '—',
+        mode: isRestoreAllMode() ? 'Completo' : `Parcial (${patterns.length} seleccionado/s)`,
+        lastline: 'Preparando restauración desde storage...',
+    });
 
+    restoreRunInProgress = true;
     try {
+        startRestoreProgressTimer();
+        setRestoreProgressDetails({ phase: 'Restaurando', lastline: 'Ejecutando restauración desde storage...' });
         const result = await API.restoreFromStorage(ctx.storageId, {
             storageId: ctx.storageId,
             snapshotId: ctx.snapshotId,
@@ -760,11 +892,26 @@ async function submitRestore(e) {
         });
         if (logOutput) logOutput.textContent += '\n' + (result.output || 'Restauración completada') + '\n';
         if (statusText) statusText.textContent = 'Restauración completada';
+        stopRestoreProgressTimer();
+        const outputLast = String(result.output || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Restauración completada';
+        setRestoreProgressDetails({
+            phase: 'Completada',
+            elapsed: formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs),
+            lastline: outputLast,
+        });
         showToast('✅ Restauración completada', 'success');
     } catch (err) {
         if (logOutput) logOutput.textContent += '\n❌ Error: ' + err.message + '\n';
         if (statusText) statusText.textContent = 'Error en restauración';
+        stopRestoreProgressTimer();
+        setRestoreProgressDetails({
+            phase: 'Error',
+            elapsed: restoreProgressStartedAtMs ? formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs) : '00:00',
+            lastline: err.message || 'Error de restauración',
+        });
         showToast('❌ Error: ' + err.message, 'error');
+    } finally {
+        restoreRunInProgress = false;
     }
 }
 

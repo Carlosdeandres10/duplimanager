@@ -695,6 +695,21 @@ body {
 }
 
 /* ─── LOG OUTPUT ───────────────────────────────────── */
+.log-rich-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.log-rich-controls > .form-input,
+.log-rich-controls > .form-select {
+  flex: 1;
+  min-width: 140px;
+  width: auto;
+  margin-bottom: 0;
+}
+
 .log-output {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
@@ -708,6 +723,37 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.8;
+}
+
+.logs-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.logs-files-pane,
+.logs-content-pane {
+  min-width: 0;
+}
+
+.logs-file-picker {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 420px) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+#log-viewer.log-output {
+  height: calc(100vh - 240px);
+  min-height: 520px;
+  max-height: none;
+}
+
+#log-placeholder.empty-state {
+  height: calc(100vh - 240px);
+  min-height: 520px;
 }
 
 /* ─── TABLE ────────────────────────────────────────── */
@@ -1430,6 +1476,10 @@ table tbody tr:hover {
   white-space: normal;
   word-break: normal;
   line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
 }
 
 .log-rich-empty {
@@ -1478,6 +1528,11 @@ table tbody tr:hover {
 .log-rich-table {
   display: grid;
   gap: 6px;
+  flex: 1 1 auto;
+  min-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+  align-content: start;
 }
 
 .log-row {
@@ -1599,6 +1654,16 @@ table tbody tr:hover {
   .log-row {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .logs-file-picker {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  #log-viewer.log-output,
+  #log-placeholder.empty-state {
+    min-height: 340px;
   }
 }
 

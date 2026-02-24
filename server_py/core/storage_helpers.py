@@ -9,6 +9,30 @@ from server_py.models.schemas import RepoCreate, RepoUpdate
 logger = get_logger("StorageHelpers")
 INTERNAL_STORAGE_SECRET_KEYS = {"_secrets", "accessId", "accessKey", "duplicacyPassword"}
 
+
+def normalize_storage_comparable_url(value: Any) -> str:
+    return str(value or "").strip().replace("\\", "/").rstrip("/").lower()
+
+
+def repo_matches_storage_record(repo: Dict[str, Any], storage: Dict[str, Any]) -> bool:
+    if not repo or not storage:
+        return False
+
+    primary = get_primary_storage(repo) or {}
+    repo_type = str(primary.get("type") or ("wasabi" if "wasabi://" in str(repo.get("storageUrl") or "").lower() else "local")).lower()
+    storage_type = str(storage.get("type") or "").lower()
+    repo_url = normalize_storage_comparable_url(primary.get("url") or repo.get("storageUrl") or "")
+    storage_url = normalize_storage_comparable_url(storage.get("url") or storage.get("localPath") or "")
+
+    # Regla sólida: si hay URL/ruta real, se compara por tipo + URL.
+    if repo_url and storage_url:
+        if repo_type and storage_type and repo_type != storage_type:
+            return False
+        return repo_url == storage_url
+
+    # Fallback legacy: solo si falta URL en el repo.
+    return bool(repo.get("storageRefId") and storage.get("id") and repo.get("storageRefId") == storage.get("id"))
+
 def sanitize_storage(storage: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = dict(storage)
     for key in INTERNAL_STORAGE_SECRET_KEYS:
@@ -327,15 +351,16 @@ def list_all_storages_for_ui() -> List[Dict[str, Any]]:
         if storage_id:
             by_id[storage_id] = item
 
-    # Enlazar backups por storageRefId
+    # Enlazar backups por destino real (tipo + URL/ruta); storageRefId queda como fallback legacy
     for repo in repos_data:
-        storage_ref_id = repo.get("storageRefId")
-        if storage_ref_id and storage_ref_id in by_id:
-            matched = by_id[storage_ref_id]
-            repo_id = repo.get("id")
-            if repo_id and repo_id not in matched["fromRepoIds"]:
-                matched["fromRepoIds"].append(repo_id)
-                matched["linkedBackups"] += 1
+        repo_id = repo.get("id")
+        if not repo_id:
+            continue
+        for matched in by_id.values():
+            if repo_matches_storage_record(repo, matched):
+                if repo_id not in matched["fromRepoIds"]:
+                    matched["fromRepoIds"].append(repo_id)
+                    matched["linkedBackups"] += 1
 
     result = list(by_id.values())
     # Ordenar por nombre

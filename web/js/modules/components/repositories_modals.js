@@ -1,7 +1,11 @@
 // ─── NEW REPO MODAL ─────────────────────────────────────
 function openNewRepoModal() {
     document.getElementById('modal-new-repo').classList.add('show');
-    document.getElementById('repo-form').reset();
+    const form = document.getElementById('repo-form');
+    form.reset();
+    if (typeof applyRepoNotificationsToForm === 'function') {
+        applyRepoNotificationsToForm(form, null);
+    }
     const modeSelect = document.getElementById('new-repo-mode');
     if (modeSelect) modeSelect.value = 'create';
     newRepoContentState = { rootPath: '', selection: [] };
