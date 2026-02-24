@@ -28,9 +28,76 @@ async function loadSettingsView() {
         setValue('setting-email-to', mail.to || '');
         setValue('setting-email-subject-prefix', mail.subjectPrefix || '[DupliManager]');
         setChecked('setting-email-send-log', mail.sendLog !== false);
+        const pa = s.panelAccess || {};
+        setChecked('setting-panel-auth-enabled', !!pa.enabled);
+        const paStatus = document.getElementById('setting-panel-auth-status');
+        if (paStatus) {
+            paStatus.textContent = pa.configured
+                ? (pa.enabled ? 'Protección activa: el panel requiere contraseña.' : 'Contraseña configurada, protección desactivada.')
+                : 'No hay contraseña configurada para el panel.';
+        }
         applyTheme(document.getElementById('setting-theme').value);
     } catch (err) {
         showToast('Error cargando settings', 'error');
+    }
+}
+
+async function savePanelAccessSettings() {
+    const enabled = !!document.getElementById('setting-panel-auth-enabled')?.checked;
+    const currentPassword = document.getElementById('setting-panel-auth-current')?.value || '';
+    const newPassword = document.getElementById('setting-panel-auth-new')?.value || '';
+    const confirmPassword = document.getElementById('setting-panel-auth-confirm')?.value || '';
+    const status = document.getElementById('setting-panel-auth-status');
+    const btn = document.getElementById('btn-save-panel-auth');
+    try {
+        if (newPassword || confirmPassword) {
+            if (newPassword !== confirmPassword) {
+                throw new Error('La nueva contraseña y la confirmación no coinciden.');
+            }
+        }
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Guardando...';
+        }
+        if (status) {
+            status.textContent = 'Guardando configuración de acceso...';
+            status.style.color = '';
+        }
+        const data = await API.savePanelAccess({
+            enabled,
+            currentPassword,
+            newPassword,
+        });
+        const auth = data.auth || {};
+        if (status) {
+            status.textContent = auth.configured
+                ? (auth.enabled ? 'Protección del panel activada.' : 'Protección del panel desactivada (contraseña conservada).')
+                : 'No hay contraseña configurada.';
+            status.style.color = 'var(--accent-green)';
+        }
+        try {
+            const authData = await API.authStatus();
+            if (typeof authState !== 'undefined') authState = authData.auth || authState;
+            if (typeof updateAuthUIState === 'function') updateAuthUIState();
+        } catch {}
+        const currentEl = document.getElementById('setting-panel-auth-current');
+        const newEl = document.getElementById('setting-panel-auth-new');
+        const confEl = document.getElementById('setting-panel-auth-confirm');
+        if (currentEl) currentEl.value = '';
+        if (newEl) newEl.value = '';
+        if (confEl) confEl.value = '';
+        showToast('✅ Acceso del panel actualizado', 'success');
+    } catch (err) {
+        if (status) {
+            status.textContent = 'Error: ' + (err.message || 'No se pudo guardar');
+            status.style.color = 'var(--accent-red)';
+        }
+        showToast('❌ ' + (err.message || 'No se pudo guardar acceso del panel'), 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔐 Guardar contraseña del panel';
+        }
     }
 }
 

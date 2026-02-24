@@ -36,6 +36,21 @@ A diferencia de otros programas, DupliManager guarda todos sus ajustes y base de
 
 ---
 
+## ✅ Contratos y Tests MVP (mantenimiento con IA)
+
+Para reducir regresiones en cambios funcionales:
+
+- **Contratos (reglas cortas)**:
+  - `docs/notifications-contract.md`
+  - `docs/backups-contract.md`
+  - `docs/restore-contract.md`
+- **Guía de pruebas MVP**:
+  - `docs/testing-mvp.md`
+- **Comando de pruebas**:
+  - `python -m unittest discover -s tests -v`
+
+---
+
 ## 🏗️ Qué hace cada archivo y carpeta (Arquitectura Técnica)
 
 ### 1. El Servidor Backend (`server_py/`)

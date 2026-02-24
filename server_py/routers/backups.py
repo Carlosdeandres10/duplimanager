@@ -33,6 +33,36 @@ router = APIRouter(tags=["backups"])
 
 # --- Repositories / Backup Jobs ---
 
+def _validate_repo_notifications_on_save(notifications: Dict[str, Any]):
+    n = dict(notifications or {})
+    hc = dict(n.get("healthchecks") or {})
+    mail = dict(n.get("email") or {})
+    hc_enabled = bool(hc.get("enabled"))
+    mail_enabled = bool(mail.get("enabled"))
+    keyword = str(hc.get("successKeyword") or "").strip()
+    hc_url = str(hc.get("url") or "").strip()
+    mail_to = str(mail.get("to") or "").strip()
+
+    if not hc_enabled and not mail_enabled:
+        return
+
+    # La palabra es compartida para el body/subject de señales de vida.
+    if not keyword:
+        raise HTTPException(
+            status_code=400,
+            detail="La palabra de éxito (override) es obligatoria si activas notificaciones en este backup.",
+        )
+    if hc_enabled and not hc_url:
+        raise HTTPException(
+            status_code=400,
+            detail="La URL Healthchecks (override) es obligatoria si activas Healthchecks para este backup.",
+        )
+    if mail_enabled and not mail_to:
+        raise HTTPException(
+            status_code=400,
+            detail="El Email destino (override) es obligatorio si activas Email para este backup.",
+        )
+
 @router.get("/api/repos")
 async def get_repos():
     repos = repositories_config.read()
@@ -186,6 +216,8 @@ async def create_repo(repo: RepoCreate):
         secrets = remapped_secrets
 
     repos_data = repositories_config.read()
+    normalized_notifications = normalize_repo_notifications_config(repo.notifications)
+    _validate_repo_notifications_on_save(normalized_notifications)
     new_repo = {
         "id": repo_id,
         "name": repo.name,
@@ -209,7 +241,7 @@ async def create_repo(repo: RepoCreate):
         "lastBackupSummary": None,
         "contentSelection": normalize_content_selection(repo.contentSelection),
         "schedule": normalize_schedule_config(repo.schedule),
-        "notifications": normalize_repo_notifications_config(repo.notifications),
+        "notifications": normalized_notifications,
     }
     if secrets:
         new_repo["_secrets"] = secrets
@@ -233,7 +265,9 @@ async def update_repo(repo_id: str, req: RepoUpdate):
             if req.schedule is not None:
                 r["schedule"] = normalize_schedule_config(req.schedule, r.get("schedule"))
             if req.notifications is not None:
-                r["notifications"] = normalize_repo_notifications_config(req.notifications, r.get("notifications"))
+                normalized_notifications = normalize_repo_notifications_config(req.notifications, r.get("notifications"))
+                _validate_repo_notifications_on_save(normalized_notifications)
+                r["notifications"] = normalized_notifications
         return all_repos
 
     repos_data = repositories_config.atomic_update(apply_update)

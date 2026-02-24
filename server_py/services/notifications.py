@@ -61,6 +61,10 @@ def _merge_repo_notification_overrides(global_cfg: Dict[str, Any], repo_cfg: Opt
         "healthchecks": dict((global_cfg or {}).get("healthchecks") or {}),
         "email": dict((global_cfg or {}).get("email") or {}),
     }
+    # La activación se decide SOLO por backup. La configuración global aporta
+    # transporte/valores por defecto (URL/SMTP/etc.), no habilita envíos.
+    merged["healthchecks"]["enabled"] = False
+    merged["email"]["enabled"] = False
     rr = dict(repo_cfg or {})
     rr_hc = dict(rr.get("healthchecks") or {})
     rr_mail = dict(rr.get("email") or {})

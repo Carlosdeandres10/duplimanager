@@ -1956,3 +1956,67 @@ body[data-theme="light"] .repo-backup-summary {
   background: rgba(59, 130, 246, 0.04);
   border-color: rgba(15, 23, 42, 0.08);
 }
+
+/* ─── PANEL AUTH OVERLAY ───────────────────────────── */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background:
+    radial-gradient(1200px 700px at 20% 10%, rgba(59, 130, 246, 0.18), transparent 60%),
+    radial-gradient(1000px 600px at 85% 75%, rgba(139, 92, 246, 0.16), transparent 60%),
+    rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.auth-overlay.active {
+  display: flex;
+}
+
+body.auth-locked {
+  overflow: hidden;
+}
+
+.auth-card {
+  width: min(520px, 94vw);
+  border-radius: 18px;
+  border: 1px solid var(--border-color);
+  background: rgba(10, 18, 44, 0.92);
+  box-shadow: 0 28px 70px rgba(2, 6, 23, 0.45);
+  padding: 22px;
+}
+
+.auth-card-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.auth-card-header h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.auth-card-header p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+body[data-theme="light"] .auth-overlay {
+  background:
+    radial-gradient(1200px 700px at 20% 10%, rgba(59, 130, 246, 0.14), transparent 60%),
+    radial-gradient(1000px 600px at 85% 75%, rgba(37, 99, 235, 0.12), transparent 60%),
+    rgba(248, 250, 252, 0.78);
+}
+
+body[data-theme="light"] .auth-card {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.15);
+}

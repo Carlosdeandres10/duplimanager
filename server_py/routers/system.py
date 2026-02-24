@@ -6,13 +6,22 @@ import hashlib
 import re
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from server_py.utils.config_store import settings as settings_config
 from server_py.utils.logger import get_log_files, read_log_file
 from server_py.models.schemas import WasabiConnectionTest, WasabiSnapshotDetectRequest
 from server_py.services.duplicacy import service as duplicacy_service
 from server_py.services.notifications import test_backup_notifications
+from server_py.services.panel_auth import (
+    get_public_status as get_panel_auth_public_status,
+    verify_panel_password,
+    create_session,
+    revoke_session,
+    is_session_valid,
+    save_panel_access,
+    SESSION_COOKIE_NAME,
+)
 from server_py.core.helpers import (
     list_local_directory_items, test_wasabi_head_bucket, test_wasabi_write_bucket,
     build_wasabi_storage_url, build_wasabi_env, _remote_cache_key, _remote_cache_get, _remote_cache_set,
@@ -301,16 +310,76 @@ async def test_notification_channels(request: Request):
         "backupLog": "Prueba manual de canales globales desde Configuración.",
     }
 
+
+@router.get("/api/auth/status")
+async def auth_status(request: Request):
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    status = get_panel_auth_public_status()
+    status["authenticated"] = bool(status.get("requiresAuth")) and is_session_valid(token)
+    if not status.get("requiresAuth"):
+        status["authenticated"] = True
+    return {"ok": True, "auth": status}
+
+
+@router.post("/api/auth/login")
+async def auth_login(request: Request, response: Response):
+    body = await request.json()
+    password = str((body or {}).get("password") or "")
+    status = get_panel_auth_public_status()
+    if status.get("requiresAuth"):
+        if not verify_panel_password(password):
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+    token = create_session()
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=12 * 60 * 60,
+        path="/",
+    )
+    status["authenticated"] = True
+    return {"ok": True, "auth": status}
+
+
+@router.post("/api/auth/logout")
+async def auth_logout(request: Request, response: Response):
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    revoke_session(token)
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return {"ok": True}
+
+
+@router.post("/api/auth/panel-access")
+async def save_auth_panel_access(request: Request):
+    body = await request.json()
+    enabled = bool((body or {}).get("enabled", False))
+    current_password = (body or {}).get("currentPassword")
+    new_password = (body or {}).get("newPassword")
+    try:
+        status = save_panel_access(
+            enabled=enabled,
+            current_password=current_password,
+            new_password=new_password,
+        )
+        return {"ok": True, "auth": status}
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex))
+
     repo_notifications: Dict[str, Any] = {"healthchecks": {}, "email": {}}
     if test_keyword:
-        repo_notifications["healthchecks"]["enabled"] = True
         repo_notifications["healthchecks"]["successKeyword"] = test_keyword
 
     if channel == "healthchecks":
+        repo_notifications["healthchecks"]["enabled"] = True
         repo_notifications["email"]["enabled"] = False
     elif channel == "email":
         repo_notifications["healthchecks"]["enabled"] = False
-
+        repo_notifications["email"]["enabled"] = True
+    else:
+        repo_notifications["healthchecks"]["enabled"] = True
+        repo_notifications["email"]["enabled"] = True
     result = await test_backup_notifications(payload, repo_notifications)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("detail") or "Falló la prueba de notificación")
@@ -323,6 +392,12 @@ async def get_settings():
     s = settings_config.read()
     if "duplicacyPath" not in s and "duplicacy_path" in s:
         s["duplicacyPath"] = s.get("duplicacy_path")
+    # No exponer el blob DPAPI del panel al frontend
+    pa = dict(s.get("panelAccess") or {})
+    if pa:
+        pa.pop("passwordBlob", None)
+        pa["configured"] = bool(get_panel_auth_public_status().get("configured"))
+        s["panelAccess"] = pa
     return {"ok": True, "settings": s}
 
 @router.put("/api/config/settings")
@@ -333,6 +408,12 @@ async def update_settings(req: Request):
     if "duplicacy_path" in data and "duplicacyPath" not in data:
         data["duplicacyPath"] = data["duplicacy_path"]
     current = settings_config.read()
+    # La contraseña del panel se gestiona por endpoint dedicado
+    if isinstance(data.get("panelAccess"), dict):
+        data["panelAccess"] = {
+            k: v for k, v in data["panelAccess"].items()
+            if k not in {"passwordBlob", "configured", "requiresAuth", "authenticated"}
+        }
     current.update(data)
     settings_config.write(current)
     return {"ok": True, "settings": current}

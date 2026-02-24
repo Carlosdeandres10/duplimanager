@@ -15,6 +15,25 @@
     />
   </head>
   <body>
+    <div id="auth-overlay" class="auth-overlay">
+      <div class="auth-card">
+        <div class="auth-card-header">
+          <div class="logo-icon">🛡️</div>
+          <div>
+            <h2>Acceso a DupliManager</h2>
+            <p>Introduce la contraseña del panel para continuar.</p>
+          </div>
+        </div>
+        <form id="auth-login-form">
+          <div class="form-group">
+            <label class="form-label" for="auth-login-password">Contraseña</label>
+            <input id="auth-login-password" type="password" class="form-input" placeholder="••••••••" autocomplete="current-password" />
+          </div>
+          <div id="auth-login-status" class="form-hint" style="min-height:20px;"></div>
+          <button id="btn-auth-login" type="submit" class="btn btn-primary" style="width:100%;">Entrar</button>
+        </form>
+      </div>
+    </div>
     <div class="app">
       <!-- ═══ SIDEBAR ═══ -->
       <aside class="sidebar">
@@ -73,6 +92,10 @@
         <div class="sidebar-footer">
           <div id="server-status">
             <span class="badge badge-info">⏳ Conectando...</span>
+          </div>
+          <div id="auth-status-badge" class="version" style="margin-top: 8px">🔓 Sin contraseña</div>
+          <div id="panel-logout-wrap" style="display:none; margin-top: 8px;">
+            <button id="btn-panel-logout" type="button" class="btn btn-ghost btn-sm" style="width:100%;">🚪 Cerrar sesión</button>
           </div>
           <div class="version" style="margin-top: 8px">
             v1.0.0 · Powered by Duplicacy
@@ -453,13 +476,39 @@
               </div>
 
               <div class="settings-section">
-                <h3>💓 Healthchecks (backup exitoso)</h3>
+                <h3>🔐 Acceso al panel (contraseña local)</h3>
                 <div class="form-group">
                   <label class="form-checkbox">
-                    <input type="checkbox" id="setting-hc-enabled" />
-                    <span>Enviar señal de vida al terminar un backup con éxito</span>
+                    <input type="checkbox" id="setting-panel-auth-enabled" />
+                    <span>Requerir contraseña para acceder al panel web</span>
                   </label>
                 </div>
+                <div class="form-group">
+                  <label class="form-label">Contraseña actual</label>
+                  <input type="password" id="setting-panel-auth-current" class="form-input" placeholder="Obligatoria si ya hay una configurada" />
+                  <span class="form-hint">Si ya existe una contraseña, debes introducirla para cambiarla o desactivar la protección.</span>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label class="form-label">Nueva contraseña</label>
+                    <input type="password" id="setting-panel-auth-new" class="form-input" placeholder="Mín. 4 caracteres" />
+                  </div>
+                  <div>
+                    <label class="form-label">Confirmar nueva contraseña</label>
+                    <input type="password" id="setting-panel-auth-confirm" class="form-input" placeholder="Repite la contraseña" />
+                  </div>
+                </div>
+                <div class="form-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-save-panel-auth" onclick="savePanelAccessSettings()">
+                    🔐 Guardar contraseña del panel
+                  </button>
+                  <span id="setting-panel-auth-status" class="form-hint">No hay contraseña configurada para el panel.</span>
+                </div>
+                <span class="form-hint">La contraseña se guarda cifrada con Windows (DPAPI) en este equipo.</span>
+              </div>
+
+              <div class="settings-section">
+                <h3>💓 Healthchecks (configuración y prueba)</h3>
                 <div class="form-group">
                   <label class="form-label">URL Healthchecks</label>
                   <input
@@ -496,13 +545,7 @@
               </div>
 
               <div class="settings-section">
-                <h3>✉️ Email (backup exitoso)</h3>
-                <div class="form-group">
-                  <label class="form-checkbox">
-                    <input type="checkbox" id="setting-email-enabled" />
-                    <span>Enviar email al terminar un backup con éxito</span>
-                  </label>
-                </div>
+                <h3>✉️ Email (configuración y prueba)</h3>
                 <div class="form-group" style="display:grid; grid-template-columns: 1.2fr 120px; gap:12px;">
                   <div>
                     <label class="form-label">Servidor SMTP</label>

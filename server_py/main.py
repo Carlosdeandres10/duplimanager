@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from server_py.utils.logger import get_logger, get_log_files, read_log_file
 from server_py.utils import config_store
 from server_py.services.duplicacy import service as duplicacy_service
+from server_py.services.panel_auth import is_panel_auth_enabled, is_session_valid, SESSION_COOKIE_NAME
 
 # ─── CONFIG ───────────────────────────────────────────────
 logger = get_logger("Server")
@@ -32,6 +33,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path or "/"
+    # Static assets y shell HTML siempre accesibles; la UI se bloquea con overlay.
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    # Rutas API públicas/minimas
+    public_api_prefixes = {
+        "/api/health",
+        "/api/auth/status",
+        "/api/auth/login",
+        "/api/auth/logout",
+    }
+    if any(path.startswith(p) for p in public_api_prefixes):
+        return await call_next(request)
+
+    if is_panel_auth_enabled():
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        if not is_session_valid(token):
+            return JSONResponse(status_code=401, content={"ok": False, "detail": "Acceso al panel bloqueado. Inicia sesión."})
+
+    return await call_next(request)
 
 # ─── MODELS ───────────────────────────────────────────────
 from server_py.models.schemas import (

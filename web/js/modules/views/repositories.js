@@ -226,7 +226,10 @@ function buildSchedulePayloadFromEditForm(form) {
 }
 
 function buildRepoNotificationsPayloadFromForm(form) {
-    if (!form) return undefined;
+    if (!form) return {
+        healthchecks: { enabled: false, url: '', successKeyword: '', sendLog: true },
+        email: { enabled: false, to: '', subjectPrefix: '', sendLog: true },
+    };
 
     const hcEnabled = !!form.notifyHcEnabled?.checked;
     const hcUrl = (form.notifyHcUrl?.value || '').trim();
@@ -238,16 +241,8 @@ function buildRepoNotificationsPayloadFromForm(form) {
     const emailSubjectPrefix = (form.notifyEmailSubjectPrefix?.value || '').trim();
     const emailSendLog = !!form.notifyEmailSendLog?.checked;
 
-    const hasHcOverride = hcEnabled || !!hcUrl || !!hcKeyword;
-    const hasEmailOverride = emailEnabled || !!emailTo || !!emailSubjectPrefix;
-    const anyBackupNotifConfig = hasHcOverride || hasEmailOverride;
-
-    if (!anyBackupNotifConfig) {
-        return undefined;
-    }
-
-    // Cuando se configuran notificaciones por backup, enviamos ambos canales con enabled explícito.
-    // Así evitamos heredar un canal global no deseado (p.ej. email) y generar falsos positivos.
+    // Siempre devolvemos la estructura completa para persistir explícitamente el estado
+    // activado/desactivado de cada canal en el backup.
     return {
         healthchecks: {
             enabled: hcEnabled,
@@ -262,6 +257,28 @@ function buildRepoNotificationsPayloadFromForm(form) {
             sendLog: emailSendLog,
         },
     };
+}
+
+function validateRepoNotificationsPayloadForSave(notifications) {
+    const n = notifications || {};
+    const hc = n.healthchecks || {};
+    const mail = n.email || {};
+    const hcEnabled = !!hc.enabled;
+    const mailEnabled = !!mail.enabled;
+    const keyword = String(hc.successKeyword || '').trim();
+    const hcUrl = String(hc.url || '').trim();
+    const mailTo = String(mail.to || '').trim();
+
+    if (!hcEnabled && !mailEnabled) return;
+    if (!keyword) {
+        throw new Error('La palabra de éxito (override) es obligatoria si activas notificaciones en este backup');
+    }
+    if (hcEnabled && !hcUrl) {
+        throw new Error('La URL Healthchecks (override) es obligatoria si activas Healthchecks para este backup');
+    }
+    if (mailEnabled && !mailTo) {
+        throw new Error('El Email destino (override) es obligatorio si activas Email para este backup');
+    }
 }
 
 function applyRepoNotificationsToForm(form, notifications) {
@@ -367,15 +384,16 @@ async function submitEditRepo(e) {
     e.preventDefault();
     const form = e.target;
     const btn = form.querySelector('button[type="submit"]');
-    const payload = {
-        name: form.snapshotId.value, // El nombre visual sigue vinculado al ID por ahora
-        contentSelection: resolveRepoContentSelectionForSubmit('edit', form.repoPath.value),
-        schedule: buildSchedulePayloadFromEditForm(form),
-    };
-    const repoNotifications = buildRepoNotificationsPayloadFromForm(form);
-    if (repoNotifications) payload.notifications = repoNotifications;
 
     try {
+        const payload = {
+            name: form.snapshotId.value, // El nombre visual sigue vinculado al ID por ahora
+            contentSelection: resolveRepoContentSelectionForSubmit('edit', form.repoPath.value),
+            schedule: buildSchedulePayloadFromEditForm(form),
+        };
+        payload.notifications = buildRepoNotificationsPayloadFromForm(form);
+        validateRepoNotificationsPayloadForSave(payload.notifications);
+
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Guardando...';
         const result = await API.updateRepo(form.repoId.value, payload);
@@ -424,8 +442,8 @@ async function submitNewRepo(e) {
             storageId: (form.storageId?.value || '').trim() || undefined,
             contentSelection: resolveRepoContentSelectionForSubmit('new', form.repoPath.value),
         };
-        const repoNotifications = buildRepoNotificationsPayloadFromForm(form);
-        if (repoNotifications) data.notifications = repoNotifications;
+        data.notifications = buildRepoNotificationsPayloadFromForm(form);
+        validateRepoNotificationsPayloadForSave(data.notifications);
 
         await API.createRepo(data);
         showToast(importExisting ? '✅ Backup vinculado exitosamente' : '✅ Backup creado exitosamente', 'success');

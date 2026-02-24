@@ -18,6 +18,9 @@ const API = {
             data = {};
         }
         if (!response.ok || !data.ok) {
+            if (response.status === 401 && typeof window.handleAuthRequired === 'function') {
+                window.handleAuthRequired();
+            }
             throw new Error(data.detail || data.error || `HTTP ${response.status}`);
         }
         return data;
@@ -145,6 +148,29 @@ const API = {
 
     async testNotificationChannels(payload) {
         return this._fetch('/system/test-notification-channels', {
+            method: 'POST',
+            body: JSON.stringify(payload || {})
+        });
+    },
+
+    // ─── AUTH ───────────────────────────────────────────
+    async authStatus() {
+        return this._fetch('/auth/status');
+    },
+
+    async authLogin(password) {
+        return this._fetch('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ password })
+        });
+    },
+
+    async authLogout() {
+        return this._fetch('/auth/logout', { method: 'POST' });
+    },
+
+    async savePanelAccess(payload) {
+        return this._fetch('/auth/panel-access', {
             method: 'POST',
             body: JSON.stringify(payload || {})
         });
