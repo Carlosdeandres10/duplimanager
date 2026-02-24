@@ -1395,6 +1395,8 @@ async def do_detect_wasabi_snapshots(req):
             all_ids=True,
         )
         if list_result.get("code") != 0:
+
+
             from fastapi import HTTPException
             detail = (list_result.get("stdout") or list_result.get("stderr") or "No se pudieron listar snapshots")
             raise HTTPException(status_code=400, detail=detail)
