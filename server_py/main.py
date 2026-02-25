@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any, List
 
 import uvicorn
@@ -9,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from server_py.utils import config_store
 from server_py.utils.logger import get_logger
+from server_py.utils.paths import WEB_DIR
 from server_py.services.panel_auth import is_panel_auth_enabled, is_session_valid, SESSION_COOKIE_NAME
 
 # ─── CONFIG ───────────────────────────────────────────────
@@ -110,9 +110,6 @@ app.include_router(restore.router)
 app.include_router(system.router)
 
 # --- Frontend Serving ---
-ROOT_DIR = Path(__file__).parent.parent
-WEB_DIR = ROOT_DIR / "web"
-
 app.mount("/css", StaticFiles(directory=str(WEB_DIR / "css")), name="css")
 app.mount("/js", StaticFiles(directory=str(WEB_DIR / "js")), name="js")
 

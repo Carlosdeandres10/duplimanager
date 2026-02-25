@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from server_py.utils.config_store import settings as settings_config
 from server_py.utils.logger import get_log_files, read_log_file, get_logger
+from server_py.utils.paths import runtime_paths_info
 from server_py.utils.secret_crypto import protect_secret, reveal_secret
 from server_py.models.schemas import WasabiConnectionTest, WasabiSnapshotDetectRequest
 from server_py.services.duplicacy import service as duplicacy_service
@@ -507,6 +508,11 @@ async def migrate_secrets(request: Request):
         repositoriesRecordsMigrated=int(result.get("repositoriesRecordsMigrated") or 0),
     )
     return result
+
+
+@router.get("/api/system/paths")
+async def get_system_paths():
+    return {"ok": True, "paths": runtime_paths_info()}
 
 # --- Config & Logs ---
 

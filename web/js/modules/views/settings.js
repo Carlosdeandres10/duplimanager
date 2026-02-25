@@ -2,6 +2,10 @@
 async function loadSettingsView() {
     try {
         const data = await API.getSettings();
+        let pathsData = null;
+        try {
+            pathsData = await API.getSystemPaths();
+        } catch {}
         const s = data.settings;
         const n = s.notifications || {};
         const hc = n.healthchecks || {};
@@ -45,9 +49,37 @@ async function loadSettingsView() {
                 ? (pa.enabled ? 'Protección activa: el panel requiere contraseña.' : 'Contraseña configurada, protección desactivada.')
                 : 'No hay contraseña configurada para el panel.';
         }
+        applySystemPathsToSettings(pathsData?.paths || null);
         applyTheme(document.getElementById('setting-theme').value);
     } catch (err) {
         showToast('Error cargando settings', 'error');
+    }
+}
+
+function setReadonlyPathField(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value || '';
+}
+
+function applySystemPathsToSettings(paths) {
+    setReadonlyPathField('setting-system-path-install', paths?.installDir || '');
+    setReadonlyPathField('setting-system-path-bundle', paths?.bundleDir || '');
+    setReadonlyPathField('setting-system-path-data', paths?.dataDir || '');
+    setReadonlyPathField('setting-system-path-config', paths?.configDir || '');
+    setReadonlyPathField('setting-system-path-logs', paths?.logsDir || '');
+    setReadonlyPathField('setting-system-path-web', paths?.webDir || '');
+    setReadonlyPathField('setting-system-path-default-duplicacy', paths?.defaultDuplicacyPath || '');
+    setReadonlyPathField('setting-system-path-python', paths?.pythonExecutable || '');
+    const modeEl = document.getElementById('setting-system-runtime-mode');
+    if (modeEl) {
+        if (!paths) {
+            modeEl.textContent = 'No disponible';
+        } else {
+            modeEl.textContent = paths.frozen
+                ? 'Empaquetado (PyInstaller / servicio)'
+                : 'Desarrollo / ejecución desde código';
+        }
     }
 }
 

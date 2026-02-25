@@ -126,6 +126,7 @@
             <li><a href="#secrets-dpapi">Secretos y DPAPI</a></li>
             <li><a href="#windows-hardening">Despliegue Windows Seguro</a></li>
             <li><a href="#windows-packaging">Empaquetado Windows</a></li>
+            <li><a href="#system-paths-diag">Rutas del Sistema</a></li>
             <li><a href="#recovery-panel">Recuperación de Acceso</a></li>
 
             <div class="nav-category">Guías de Solución de Errores</div>
@@ -271,7 +272,8 @@
                 <li><strong>Firewall:</strong> no exponer directamente el puerto del backend a Internet.</li>
                 <li><strong>Proxy HTTPS:</strong> pasar <code>X-Forwarded-Proto: https</code> si se usa modo de cookie segura <code>auto</code>.</li>
                 <li><strong>CORS:</strong> mantener deshabilitado por defecto (same-origin). Si se habilita, usar orígenes explícitos en <code>settings.cors.allowOrigins</code> (sin wildcard <code>*</code>).</li>
-                <li><strong>Usuario de servicio:</strong> preferir una cuenta dedicada con mínimo privilegio.</li>
+                <li><strong>Servicio Windows:</strong> en instalaciones cliente usar el servicio <code>DupliManager</code> (WinSW) para que el scheduler siga ejecutando tareas programadas sin sesión de usuario.</li>
+                <li><strong>Usuario de servicio:</strong> preferir una cuenta dedicada con mínimo privilegio cuando el cliente lo requiera.</li>
                 <li><strong>Migración post-upgrade:</strong> ejecutar migración de secretos legacy a DPAPI tras actualizar instalaciones antiguas.</li>
                 <li><strong>Logs:</strong> revisar eventos <code>AuthAudit</code> y registros de backup/restore.</li>
             </ul>
@@ -302,10 +304,27 @@
             <ul>
                 <li><strong>Build cliente:</strong> <code>scripts/build-client.ps1</code> (incluye <code>web/</code>, excluye <code>server_py.tools.maintenance</code> y <code>tkinter</code>).</li>
                 <li><strong>Build soporte:</strong> <code>scripts/build-support-maintenance.ps1</code> (CLI interna de mantenimiento, uso exclusivo de soporte/proveedor).</li>
+                <li><strong>Instalador Inno Setup:</strong> <code>installer/DupliManager.iss</code> + wrapper <code>scripts/build-installer.ps1</code> (modos <code>client</code>/<code>support</code>, con servicio Windows por WinSW en cliente).</li>
+                <li><strong>WinSW:</strong> wrapper de servicio Windows para arrancar DupliManager automáticamente y mantener el scheduler de backups activo.</li>
+                <li><strong>CI/CD GitHub:</strong> workflow Windows <code>.github/workflows/release-windows-installer.yml</code> para compilar y publicar instaladores en GitHub Releases con checksum.</li>
                 <li><strong>Dependencias fijas:</strong> usar <code>requirements-lock.txt</code> para reproducibilidad.</li>
                 <li><strong>Checklist:</strong> pruebas MVP, arranque en VM Windows limpia y verificación de que el CLI interno no viaja en la distribución cliente.</li>
             </ul>
             <p>Guía detallada: <code>docs/windows-packaging.md</code>.</p>
+        </div>
+
+        <h2 id="system-paths-diag">🗂️ Rutas del Sistema (Diagnóstico en Panel)</h2>
+
+        <div class="file-card">
+            <h3>Rutas Runtime Centralizadas <span class="badge">Soporte / Empaquetado</span></h3>
+            <p><strong>Novedad:</strong> DupliManager centraliza las rutas del sistema en <code>server_py/utils/paths.py</code> para soportar mejor el modo desarrollo y el modo empaquetado (<code>PyInstaller</code>).</p>
+            <ul>
+                <li><strong>Recursos (bundle):</strong> assets web y librerías se resuelven desde el bundle empaquetado (<code>_internal</code>).</li>
+                <li><strong>Datos runtime:</strong> <code>config/</code>, <code>logs/</code> y cache se resuelven desde la raíz de instalación (por ejemplo <code>C:\ProgramData\DupliManager</code>).</li>
+                <li><strong>Diagnóstico UI:</strong> en <code>Configuración</code> se muestran las rutas reales detectadas (solo lectura).</li>
+                <li><strong>Diagnóstico API:</strong> <code>GET /api/system/paths</code>.</li>
+            </ul>
+            <p><strong>Uso práctico:</strong> sirve para verificar rápidamente en cliente si la instalación empaquetada está escribiendo datos donde toca y si <code>duplicacy.exe</code> está en la ruta esperada.</p>
         </div>
 
 

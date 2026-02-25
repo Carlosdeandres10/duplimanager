@@ -7,9 +7,9 @@ import os
 import logging
 import re
 from datetime import datetime
-from pathlib import Path
 
-LOGS_DIR = Path(__file__).parent.parent.parent / "logs"
+from server_py.utils.paths import LOGS_DIR
+
 LOGS_DIR.mkdir(exist_ok=True)
 SAFE_LOG_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.log$")
 

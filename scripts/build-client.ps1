@@ -30,7 +30,9 @@ try {
         "--exclude-module", "server_py.tools.maintenance",
         "--exclude-module", "tkinter",
         "--exclude-module", "tkinter.filedialog",
-        "--add-data", "web;web",
+        "--add-data", "web\\index.html;web",
+        "--add-data", "web\\css;web\\css",
+        "--add-data", "web\\js;web\\js",
         "--add-data", "docs.html;.",
         "--add-data", "config\.gitkeep;config",
         "--add-data", "logs\.gitkeep;logs"
@@ -58,4 +60,3 @@ try {
 finally {
     Pop-Location
 }
-

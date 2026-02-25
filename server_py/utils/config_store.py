@@ -6,12 +6,11 @@ Gestión de configuración basada en SQLite para concurrencia segura.
 import json
 import sqlite3
 import threading
-from pathlib import Path
 from typing import Any
 
 from server_py.utils.logger import get_logger
+from server_py.utils.paths import CONFIG_DIR, DEFAULT_DUPLICACY_EXE
 
-CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 CONFIG_DIR.mkdir(exist_ok=True)
 
 DB_PATH = CONFIG_DIR / "duplimanager.db"
@@ -21,7 +20,7 @@ DEFAULTS = {
     "settings.json": {
         "host": "127.0.0.1",
         "port": 8500,
-        "duplicacy_path": str(Path(__file__).parent.parent.parent / "bin" / "duplicacy.exe"),
+        "duplicacy_path": str(DEFAULT_DUPLICACY_EXE),
         "language": "es",
         "theme": "dark",
         "cors": {

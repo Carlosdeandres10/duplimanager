@@ -213,3 +213,36 @@ Nota:
 - Script/plantilla de instalador Windows (MSI/EXE)
 - Servicio Windows (WinSW/NSSM/alternativa elegida)
 - Checklist post-instalacion automatizable
+
+## Fase 1.6 / Inicio de Fase 4 - Instalador Windows + Servicio
+### Hecho
+- Instalador base con Inno Setup:
+  - `installer/DupliManager.iss`
+  - wrapper `scripts/build-installer.ps1`
+- Integracion de servicio Windows con WinSW en build cliente:
+  - `installer/winsw/DupliManagerService.xml`
+  - `scripts/download-winsw.ps1`
+  - instalacion/parada/arranque del servicio desde el instalador
+- Instalacion por defecto en `C:\ProgramData\DupliManager` (via `{commonappdata}`) para evitar problemas de permisos con `config/` y `logs/`.
+- Acceso directo principal del instalador cliente abre el panel (`http://127.0.0.1:8500`) para evitar lanzar un segundo proceso manual cuando ya corre el servicio.
+- Build cliente actualizado para no arrastrar carpetas ocultas no deseadas dentro de `web/` (ej. `web/.duplicacy`).
+
+### Rutas runtime centralizadas (soporte empaquetado)
+- Nuevo modulo `server_py/utils/paths.py` como fuente unica de rutas de runtime:
+  - `CONFIG_DIR`, `LOGS_DIR`, `WEB_DIR`, `BIN_DIR`, `CACHE_DIR`
+  - deteccion de modo `frozen` (PyInstaller) vs desarrollo
+- Migrados a `paths.py`:
+  - `server_py/main.py`
+  - `server_py/utils/config_store.py`
+  - `server_py/utils/logger.py`
+  - `server_py/core/remote_cache.py`
+- Nuevo endpoint de diagnostico:
+  - `GET /api/system/paths`
+- Nueva tarjeta en el panel (`Configuración`) para ver rutas reales del sistema (solo lectura).
+
+### Pendiente (siguiente bloque)
+- Definir cuenta de servicio (LocalSystem vs usuario dedicado) segun tipo de cliente
+- Script de post-instalacion / healthcheck (`/api/health`)
+- Procedimiento de upgrade/rollback automatizable
+- Estrategia de auto-updater o canal de upgrades firmados
+- Pipeline CI/CD de release estable (GitHub Actions, tags `v*`) para reducir pasos manuales

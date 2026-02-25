@@ -1,17 +1,17 @@
 import json
 import time
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from server_py.utils.logger import get_logger
+from server_py.utils.paths import REMOTE_CACHE_DIR, REMOTE_CACHE_PROBES_DIR
 
 logger = get_logger("RemoteCache")
 
 REMOTE_LIST_CACHE_TTL_SECONDS = 3600
 
-CACHE_DIR = Path(__file__).parent.parent / "config" / "cache"
+CACHE_DIR = REMOTE_CACHE_DIR
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-PROBES_DIR = CACHE_DIR / "probes"
+PROBES_DIR = REMOTE_CACHE_PROBES_DIR
 PROBES_DIR.mkdir(parents=True, exist_ok=True)
 LOOKUP_CACHE_FILE = CACHE_DIR / "lookup_cache.json"
 
@@ -57,4 +57,3 @@ def _save_remote_cache() -> None:
 def _remote_cache_set(key: str, value: Any) -> None:
     remote_storage_list_cache[key] = {"ts": time.time(), "value": value}
     _save_remote_cache()
-

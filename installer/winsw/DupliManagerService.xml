@@ -1,0 +1,21 @@
+<service>
+  <id>DupliManager</id>
+  <name>DupliManager</name>
+  <description>DupliManager Backup &amp; Recovery Service</description>
+
+  <executable>%BASE%\\DupliManager.exe</executable>
+  <workingdirectory>%BASE%</workingdirectory>
+
+  <startmode>Automatic</startmode>
+  <stoptimeout>15 sec</stoptimeout>
+
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+
+  <log mode="roll-by-size">
+    <sizeThreshold>10485760</sizeThreshold>
+    <keepFiles>5</keepFiles>
+    <pattern>yyyyMMdd</pattern>
+  </log>
+</service>
+

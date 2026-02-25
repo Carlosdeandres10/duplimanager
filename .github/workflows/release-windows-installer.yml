@@ -1,0 +1,220 @@
+name: Release Windows Installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión semántica (ej: 1.0.2). Si se omite, usa la del tag o 0.0.0-dev"
+        required: false
+        type: string
+      build_mode:
+        description: "Modo de build"
+        required: true
+        default: client
+        type: choice
+        options:
+          - client
+          - support
+      publish_release:
+        description: "Publicar GitHub Release (solo recomendado con tag)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      PYTHON_VERSION: "3.12"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            requirements-lock.txt
+
+      - name: Setup Node (syntax checks)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python -m pip install pyinstaller
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Resolve build metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $isTag = "${{ startsWith(github.ref, 'refs/tags/v') }}"
+          $refName = "${{ github.ref_name }}"
+          $dispatchVersion = "${{ inputs.version }}"
+          $mode = "${{ inputs.build_mode }}"
+          if (-not $mode) { $mode = "client" }
+
+          if ($dispatchVersion) {
+            $version = $dispatchVersion.Trim()
+          } elseif ($refName -and $refName -match '^v(.+)$') {
+            $version = $Matches[1]
+          } else {
+            $version = "0.0.0-dev"
+          }
+
+          $installerName = "DupliManager-$mode-setup-$version.exe"
+          $installerPath = "installer/output/$installerName"
+          $publish = "${{ inputs.publish_release }}"
+          if (-not $publish) { $publish = "false" }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "installer_name=$installerName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "installer_path=$installerPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "is_tag=$isTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "publish_release=$publish" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Download WinSW (client only)
+        if: ${{ steps.meta.outputs.mode == 'client' }}
+        shell: pwsh
+        run: |
+          .\scripts\download-winsw.ps1
+
+      - name: Download Duplicacy CLI (client only)
+        if: ${{ steps.meta.outputs.mode == 'client' }}
+        shell: pwsh
+        run: |
+          .\scripts\download-duplicacy.ps1 -Version latest -Arch x64
+
+      - name: Run tests (MVP)
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v
+
+      - name: Validate syntax (backend/frontend)
+        shell: pwsh
+        run: |
+          python -m py_compile server_py/routers/backups.py server_py/routers/restore.py server_py/routers/system.py server_py/services/notifications.py
+          node --check web/js/modules/views/repositories.js
+          node --check web/js/modules/views/restore.js
+          node --check web/js/modules/views/settings.js
+          node --check web/js/api.js
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          .\scripts\build-installer.ps1 -Mode ${{ steps.meta.outputs.mode }} -Version ${{ steps.meta.outputs.version }} -BuildPyInstallerFirst
+
+      - name: Generate checksums and metadata
+        id: assets
+        shell: pwsh
+        run: |
+          $installer = "${{ steps.meta.outputs.installer_path }}"
+          if (-not (Test-Path $installer)) { throw "No se encontró el instalador: $installer" }
+
+          $hash = (Get-FileHash -Path $installer -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $installer).Length
+          $shaFile = "installer/output/SHA256SUMS.txt"
+          "$hash *${{ steps.meta.outputs.installer_name }}" | Out-File -FilePath $shaFile -Encoding ascii
+
+          $meta = [ordered]@{
+            version = "${{ steps.meta.outputs.version }}"
+            mode = "${{ steps.meta.outputs.mode }}"
+            build = [ordered]@{
+              workflow = "${{ github.workflow }}"
+              runId = "${{ github.run_id }}"
+              runNumber = "${{ github.run_number }}"
+              sha = "${{ github.sha }}"
+            }
+            installer = [ordered]@{
+              file = "${{ steps.meta.outputs.installer_name }}"
+              sha256 = $hash
+              size = $size
+            }
+            generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+          }
+          $meta | ConvertTo-Json -Depth 8 | Out-File -FilePath "installer/output/release-metadata.json" -Encoding utf8
+
+          $notesFile = "installer/output/release-notes.md"
+          $tagRef = "${{ github.ref_name }}"
+          if ($tagRef -and $tagRef.StartsWith("v")) {
+            $prevTag = (git tag --sort=-creatordate | Where-Object { $_ -ne $tagRef } | Select-Object -First 1)
+          } else {
+            $prevTag = ""
+          }
+          if ($prevTag) {
+            $log = git log --pretty=format:"- %h %s" "$prevTag..HEAD"
+          } else {
+            $log = git log --pretty=format:"- %h %s" -20
+          }
+          @(
+            "# DupliManager ${{ steps.meta.outputs.version }}"
+            ""
+            "## Cambios"
+            ""
+            ($log | Where-Object { $_ -ne $null })
+            ""
+            "## Integridad"
+            ""
+            "- SHA256: `$hash`"
+          ) | Out-File -FilePath $notesFile -Encoding utf8
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: duplimanager-${{ steps.meta.outputs.mode }}-${{ steps.meta.outputs.version }}
+          path: |
+            ${{ steps.meta.outputs.installer_path }}
+            installer/output/SHA256SUMS.txt
+            installer/output/release-metadata.json
+            installer/output/release-notes.md
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag push)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.meta.outputs.installer_path }}
+            installer/output/SHA256SUMS.txt
+            installer/output/release-metadata.json
+            installer/output/release-notes.md
+          generate_release_notes: true
+          append_body: true
+          body_path: installer/output/release-notes.md
+
+      - name: Publish GitHub Release (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            ${{ steps.meta.outputs.installer_path }}
+            installer/output/SHA256SUMS.txt
+            installer/output/release-metadata.json
+            installer/output/release-notes.md
+          generate_release_notes: true
+          append_body: true
+          body_path: installer/output/release-notes.md
+

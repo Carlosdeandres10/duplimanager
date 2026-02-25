@@ -39,6 +39,111 @@ Uso interno del proveedor/soporte. No distribuir al cliente.
 .\scripts\build-support-maintenance.ps1
 ```
 
+## Instalador Windows (Inno Setup)
+### Script base del instalador
+- `installer/DupliManager.iss`
+
+Características de esta base:
+- Modo `client` y `support` con el mismo `.iss` (selector por macro `BuildMode`)
+- Instalación por defecto en `C:\ProgramData\...` para evitar problemas de permisos con `config/logs`
+- Excluye `server.log` si aparece en el árbol de `dist`
+- Conserva datos de runtime en upgrades normales (no borra `config/logs` a la fuerza)
+- En modo cliente instala y arranca servicio Windows usando **WinSW** (recomendado para scheduler/tareas programadas)
+
+## Rutas runtime (importante para builds empaquetadas)
+Se ha centralizado la resolución de rutas en:
+- `server_py/utils/paths.py`
+
+Objetivo:
+- separar **recursos empaquetados** (`_internal`, assets web, librerías) de **datos de runtime** (`config`, `logs`, cache)
+- evitar que upgrades rompan la persistencia
+- facilitar soporte/diagnóstico en clientes
+
+Resumen de comportamiento:
+- Desarrollo (desde repo): datos y recursos salen del árbol del proyecto.
+- Empaquetado (`frozen`): recursos desde `bundleDir` (`_internal`) y datos desde la raíz de instalación (`dataDir`, p.ej. `C:\ProgramData\DupliManager`).
+
+Diagnóstico en panel:
+- `Configuración -> Rutas del sistema (diagnóstico)` (solo lectura)
+- API: `GET /api/system/paths`
+
+### WinSW (servicio Windows)
+Archivos de integración:
+- `installer/winsw/DupliManagerService.xml` (config del servicio)
+- `installer/vendor/winsw/WinSW-x64.exe` (binario WinSW, se renombra en instalación a `DupliManagerService.exe`)
+
+Descarga rápida del binario WinSW:
+```powershell
+.\scripts\download-winsw.ps1
+```
+
+Descarga rápida de Duplicacy CLI (Windows x64):
+```powershell
+.\scripts\download-duplicacy.ps1 -Version latest -Arch x64
+```
+
+Notas:
+- El instalador cliente falla con mensaje claro si no encuentra `installer/vendor/winsw/WinSW-x64.exe`.
+- El servicio Windows permite que el scheduler interno de DupliManager siga ejecutando tareas programadas aunque nadie haya iniciado sesión.
+
+### Compilar instalador con wrapper PowerShell
+```powershell
+.\scripts\build-installer.ps1 -Mode client -Version 1.0.0
+```
+
+Si quieres compilar primero PyInstaller y luego Inno en una sola orden:
+```powershell
+.\scripts\build-installer.ps1 -Mode client -Version 1.0.0 -BuildPyInstallerFirst
+```
+
+Build de soporte (CLI interno):
+```powershell
+.\scripts\build-installer.ps1 -Mode support -Version 1.0.0
+```
+
+El script intenta detectar `ISCC.exe` en:
+- `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`
+- `C:\Program Files\Inno Setup 6\ISCC.exe`
+
+También admite ruta manual:
+```powershell
+.\scripts\build-installer.ps1 -Mode client -ISCCPath "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+```
+
+## Automatización con GitHub (recomendado)
+### Workflow CI/CD (Windows)
+- `.github/workflows/release-windows-installer.yml`
+
+Qué hace:
+1. Prepara runner Windows
+2. Instala Python + dependencias + PyInstaller
+3. Instala Inno Setup 6
+4. Descarga `WinSW` y `duplicacy.exe` (modo `client`)
+5. Ejecuta pruebas MVP + validaciones de sintaxis
+6. Genera build (`PyInstaller`) + instalador (`Inno Setup`)
+7. Calcula `SHA256`
+8. Publica artefactos y (si hay tag `v*`) crea/actualiza GitHub Release
+
+### Disparadores
+- `push` a tags `v*` (publica Release)
+- `workflow_dispatch` (manual; puede compilar cliente/soporte y opcionalmente publicar Release)
+
+### Flujo recomendado de publicación
+1. Commit/push a `main`
+2. Crear tag:
+   ```powershell
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+3. Esperar workflow `Release Windows Installer`
+4. Descargar el `.exe` desde GitHub Releases
+
+### Artefactos publicados
+- `DupliManager-client-setup-x.y.z.exe`
+- `SHA256SUMS.txt`
+- `release-metadata.json`
+- `release-notes.md`
+
 ## Diferencia cliente vs soporte (importante)
 - **Cliente**
   - Ejecuta el panel/API (`server_py/main.py`)
@@ -60,22 +165,27 @@ Uso interno del proveedor/soporte. No distribuir al cliente.
 4. Generar build cliente.
 5. Arrancar build cliente en una VM Windows limpia:
    - abre panel
+   - confirma que el servicio `DupliManager` está creado y en ejecución
    - login panel
    - backup manual
    - restore manual
    - migración de secretos (`Configuración`)
 6. Confirmar que `pick-folder` en build empaquetada responde con mensaje controlado (no traceback).
 7. Confirmar que el CLI de mantenimiento **no** está en la distribución de cliente.
+8. Confirmar en el panel (`Configuración -> Rutas del sistema`) que:
+   - `mode = empaquetado`
+   - `dataDir/configDir/logsDir` apuntan a la instalación (`ProgramData`)
+   - `webDir` apunta al bundle (`_internal`)
 
 ## Checklist de empaquetado/instalador (fase siguiente)
-1. Crear instalador MSI/EXE (Inno Setup/WiX o equivalente).
-2. Instalar como servicio Windows (1 proceso).
-3. Definir usuario de servicio y permisos.
-4. Abrir firewall solo si aplica (por defecto `127.0.0.1`).
-5. Procedimiento de upgrade y rollback.
+1. Definir usuario de servicio y permisos (LocalSystem vs cuenta dedicada).
+2. Abrir firewall solo si aplica (por defecto `127.0.0.1`).
+3. Procedimiento de upgrade y rollback.
+4. Estrategia de auto-updater (si aplica) o canal de upgrades manuales firmados.
+5. Healthcheck post-instalación automatizado (comprobar `/api/health`).
 
 ## Notas operativas
 - La build cliente usa `web/` y `docs.html` como datos incluidos.
+- La build cliente incluye `web/index.html`, `web/css/` y `web/js/` de forma explícita (evita arrastrar carpetas ocultas no deseadas como `web/.duplicacy`).
 - Si `bin\duplicacy.exe` no existe, el script avisa y sigue; la instalación deberá resolver ese binario por otro medio.
 - La eliminación del archivo `server.log` del repo forma parte de la higiene pre-build (artefacto de runtime).
-

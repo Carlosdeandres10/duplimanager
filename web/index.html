@@ -495,6 +495,51 @@
               </div>
 
               <div class="settings-section">
+                <h3>🗂️ Rutas del sistema (diagnóstico)</h3>
+                <div class="form-group">
+                  <label class="form-label">Modo de ejecución</label>
+                  <div id="setting-system-runtime-mode" class="form-hint" style="font-weight:600;">Cargando...</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Directorio de instalación</label>
+                  <input type="text" id="setting-system-path-install" class="form-input" readonly />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Directorio de recursos (bundle)</label>
+                  <input type="text" id="setting-system-path-bundle" class="form-input" readonly />
+                  <span class="form-hint">En builds empaquetadas suele ser <code>_internal</code>. Los datos (config/logs) se guardan aparte.</span>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label class="form-label">Directorio de datos</label>
+                    <input type="text" id="setting-system-path-data" class="form-input" readonly />
+                  </div>
+                  <div>
+                    <label class="form-label">Config</label>
+                    <input type="text" id="setting-system-path-config" class="form-input" readonly />
+                  </div>
+                </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                  <div>
+                    <label class="form-label">Logs</label>
+                    <input type="text" id="setting-system-path-logs" class="form-input" readonly />
+                  </div>
+                  <div>
+                    <label class="form-label">Web (assets)</label>
+                    <input type="text" id="setting-system-path-web" class="form-input" readonly />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Ruta Duplicacy por defecto (runtime)</label>
+                  <input type="text" id="setting-system-path-default-duplicacy" class="form-input" readonly />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Ejecutable Python / binario actual</label>
+                  <input type="text" id="setting-system-path-python" class="form-input" readonly />
+                </div>
+              </div>
+
+              <div class="settings-section">
                 <h3>🔐 Acceso al panel (contraseña local)</h3>
                 <div class="form-group">
                   <label class="form-checkbox">

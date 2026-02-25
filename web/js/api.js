@@ -168,6 +168,10 @@ const API = {
         });
     },
 
+    async getSystemPaths() {
+        return this._fetch('/system/paths');
+    },
+
     // ─── AUTH ───────────────────────────────────────────
     async authStatus() {
         return this._fetch('/auth/status');
