@@ -138,6 +138,50 @@ Qué hace:
 3. Esperar workflow `Release Windows Installer`
 4. Descargar el `.exe` desde GitHub Releases
 
+## Scripts de release (local vs GitHub)
+### `scripts/release-local.ps1` (preparar release en tu PC)
+Uso:
+- Validar antes de publicar
+- Generar instalador local
+- Generar `SHA256SUMS.txt`
+- Generar `release-notes.md` desde commits (desde el último tag)
+- (Opcional) actualizar `CHANGELOG.md`
+
+Ejemplo:
+```powershell
+.\scripts\release-local.ps1 -Version 1.0.2 -Mode client -UpdateChangelog
+```
+
+Salida (local):
+- `installer/output/DupliManager-client-setup-1.0.2.exe`
+- `installer/output/SHA256SUMS.txt`
+- `installer/output/release-notes.md`
+- `installer/output/release-metadata.local.json`
+
+### `scripts/release-github.ps1` (publicar versión en GitHub)
+Uso:
+- Empujar `main`
+- Crear tag `vX.Y.Z`
+- Empujar el tag para disparar el workflow de GitHub Actions
+
+Ejemplo (publicación normal):
+```powershell
+.\scripts\release-github.ps1 -Version 1.0.2
+```
+
+Ejemplo (preparar release local primero y luego publicar):
+```powershell
+.\scripts\release-github.ps1 -Version 1.0.2 -RunLocalRelease
+```
+
+Notas:
+- `release-github.ps1` por defecto exige árbol limpio (`git status` limpio).
+- Si usas `-RunLocalRelease -UpdateChangelog`, el script te pedirá implícitamente que hagas commit del `CHANGELOG.md` antes de crear el tag (para no etiquetar una versión con cambios sin commitear).
+
+## Cuándo usar cada uno
+- **Release local**: cuando quieres validar el instalador, calcular hash y revisar notas antes de publicar.
+- **Release GitHub**: cuando ya estás listo para publicar y quieres que GitHub Actions compile/publice automáticamente.
+
 ### Artefactos publicados
 - `DupliManager-client-setup-x.y.z.exe`
 - `SHA256SUMS.txt`
