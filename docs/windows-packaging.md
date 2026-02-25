@@ -139,6 +139,18 @@ Qué hace:
 4. Descargar el `.exe` desde GitHub Releases
 
 ## Scripts de release (local vs GitHub)
+### `scripts/release.ps1` (interactivo, recomendado)
+Unifica el flujo y te pregunta lo mínimo (versión, tipo de release).
+
+Ejemplo:
+```powershell
+.\scripts\release.ps1
+```
+
+Puede lanzar:
+- `release-local.ps1` (si eliges `local`)
+- `release-github.ps1` (si eliges `github`)
+
 ### `scripts/release-local.ps1` (preparar release en tu PC)
 Uso:
 - Validar antes de publicar
@@ -179,6 +191,7 @@ Notas:
 - Si usas `-RunLocalRelease -UpdateChangelog`, el script te pedirá implícitamente que hagas commit del `CHANGELOG.md` antes de crear el tag (para no etiquetar una versión con cambios sin commitear).
 
 ## Cuándo usar cada uno
+- **`release.ps1` (interactivo)**: uso diario recomendado si no quieres recordar comandos/parámetros.
 - **Release local**: cuando quieres validar el instalador, calcular hash y revisar notas antes de publicar.
 - **Release GitHub**: cuando ya estás listo para publicar y quieres que GitHub Actions compile/publice automáticamente.
 

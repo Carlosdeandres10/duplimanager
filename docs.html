@@ -307,7 +307,7 @@
                 <li><strong>Instalador Inno Setup:</strong> <code>installer/DupliManager.iss</code> + wrapper <code>scripts/build-installer.ps1</code> (modos <code>client</code>/<code>support</code>, con servicio Windows por WinSW en cliente).</li>
                 <li><strong>WinSW:</strong> wrapper de servicio Windows para arrancar DupliManager automáticamente y mantener el scheduler de backups activo.</li>
                 <li><strong>CI/CD GitHub:</strong> workflow Windows <code>.github/workflows/release-windows-installer.yml</code> para compilar y publicar instaladores en GitHub Releases con checksum.</li>
-                <li><strong>Scripts de release:</strong> <code>scripts/release-local.ps1</code> (validación/build/notas) y <code>scripts/release-github.ps1</code> (push + tag + publicación vía Actions).</li>
+                <li><strong>Scripts de release:</strong> <code>scripts/release.ps1</code> (interactivo, recomendado), más <code>release-local.ps1</code> y <code>release-github.ps1</code> para uso avanzado.</li>
                 <li><strong>Dependencias fijas:</strong> usar <code>requirements-lock.txt</code> para reproducibilidad.</li>
                 <li><strong>Checklist:</strong> pruebas MVP, arranque en VM Windows limpia y verificación de que el CLI interno no viaja en la distribución cliente.</li>
             </ul>
