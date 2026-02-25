@@ -213,9 +213,18 @@ async def health():
 
 @router.get("/api/system/pick-folder")
 def pick_folder(start: Optional[str] = None):
+    import sys
+
+    if getattr(sys, "frozen", False):
+        raise HTTPException(
+            status_code=400,
+            detail="El selector visual de carpetas no está disponible en la versión servidor. Escribe la ruta a mano.",
+        )
     try:
         import tkinter as tk
         from tkinter import filedialog
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"No se pudo abrir el selector de carpetas: {exc}")
 

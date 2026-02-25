@@ -1,26 +1,14 @@
-import os
-import uuid
-import asyncio
-import hashlib
-import hmac
-import time
-import signal
-import tempfile
-import json
-from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict, Any
 from pathlib import Path
-from urllib import request as urllib_request, error as urllib_error
-from urllib.parse import quote
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from typing import Any, List
 
-from server_py.utils.logger import get_logger, get_log_files, read_log_file
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 from server_py.utils import config_store
-from server_py.services.duplicacy import service as duplicacy_service
+from server_py.utils.logger import get_logger
 from server_py.services.panel_auth import is_panel_auth_enabled, is_session_valid, SESSION_COOKIE_NAME
 
 # ─── CONFIG ───────────────────────────────────────────────
@@ -113,11 +101,6 @@ async def auth_middleware(request: Request, call_next):
 
     return await call_next(request)
 
-# ─── MODELS ───────────────────────────────────────────────
-from server_py.models.schemas import (
-    RepoCreate, BackupStart, BackupCancelRequest, RestoreRequest, StorageRestoreRequest,
-    WasabiConnectionTest, WasabiSnapshotDetectRequest, RepoUpdate, StorageCreate, StorageUpdate
-)
 # ─── ROUTERS ────────────────────────────────────────────────
 from server_py.routers import storages, backups, restore, system
 
@@ -139,10 +122,6 @@ async def serve_spa(full_path: str):
         raise HTTPException(status_code=404, detail="API route not found")
     # Fallback to index.html for SPA routing
     return FileResponse(str(WEB_DIR / "index.html"))
-
-# ─── MAIN ─────────────────────────────────────────────────
-import uvicorn
-import json
 
 if __name__ == "__main__":
     settings_data = config_store.settings.read()
