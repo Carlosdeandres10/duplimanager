@@ -17,6 +17,27 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 
+function Sync-AppVersionFile {
+    param([string]$Version)
+    $repoRoot = Get-RepoRoot
+    $versionPath = Join-Path $repoRoot "server_py\version.py"
+    if (-not (Test-Path $versionPath)) {
+        throw "No se encontró archivo de versión: $versionPath"
+    }
+    $content = Get-Content $versionPath -Raw -Encoding utf8
+    $updated = [regex]::Replace(
+        $content,
+        '(?m)^__version__\s*=\s*"[^"]*"\s*$',
+        ('__version__ = "{0}"' -f $Version)
+    )
+    if ($updated -ne $content) {
+        $updated | Out-File -FilePath $versionPath -Encoding utf8
+        Write-Host "Versión sincronizada en server_py/version.py -> $Version" -ForegroundColor Green
+        return $true
+    }
+    return $false
+}
+
 function Get-PreviousTag {
     param([string]$CurrentTag)
     $tags = @(git tag --sort=-creatordate)
@@ -110,6 +131,8 @@ try {
         throw "Versión inválida '$Version'. Usa formato semántico (ej: 1.0.2)."
     }
 
+    Sync-AppVersionFile -Version $version | Out-Null
+
     $outDir = Join-Path $repoRoot "installer\output"
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
@@ -187,4 +210,3 @@ try {
 finally {
     Pop-Location
 }
-

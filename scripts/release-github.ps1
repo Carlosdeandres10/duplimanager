@@ -14,6 +14,27 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 
+function Sync-AppVersionFile {
+    param([string]$Version)
+    $repoRoot = Get-RepoRoot
+    $versionPath = Join-Path $repoRoot "server_py\version.py"
+    if (-not (Test-Path $versionPath)) {
+        throw "No se encontró archivo de versión: $versionPath"
+    }
+    $content = Get-Content $versionPath -Raw -Encoding utf8
+    $updated = [regex]::Replace(
+        $content,
+        '(?m)^__version__\s*=\s*"[^"]*"\s*$',
+        ('__version__ = "{0}"' -f $Version)
+    )
+    if ($updated -ne $content) {
+        $updated | Out-File -FilePath $versionPath -Encoding utf8
+        Write-Host "Versión sincronizada en server_py/version.py -> $Version" -ForegroundColor Green
+        return $true
+    }
+    return $false
+}
+
 $repoRoot = Get-RepoRoot
 Push-Location $repoRoot
 try {
@@ -32,6 +53,12 @@ try {
 
     if ((git tag --list $tag)) {
         throw "El tag '$tag' ya existe."
+    }
+
+    $versionFileChanged = Sync-AppVersionFile -Version $version
+    if ($versionFileChanged) {
+        git add server_py/version.py
+        git commit -m "Bump app version to $version"
     }
 
     if ($RunLocalRelease) {
@@ -75,4 +102,3 @@ try {
 finally {
     Pop-Location
 }
-
