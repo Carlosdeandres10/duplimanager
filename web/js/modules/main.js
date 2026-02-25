@@ -198,6 +198,11 @@ async function checkServerHealth() {
         if (indicator) {
             indicator.innerHTML = `<span class="badge badge-success">🟢 Servidor activo</span>`;
         }
+        const versionEl = document.getElementById('app-version-footer');
+        if (versionEl) {
+            const v = (data && data.version) ? String(data.version).trim() : '';
+            versionEl.textContent = `${v ? `v${v}` : 'v?'} · Powered by Caisoft`;
+        }
     } catch {
         const indicator = document.getElementById('server-status');
         if (indicator) {

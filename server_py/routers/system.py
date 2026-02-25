@@ -19,6 +19,7 @@ from server_py.models.schemas import WasabiConnectionTest, WasabiSnapshotDetectR
 from server_py.services.duplicacy import service as duplicacy_service
 from server_py.services.notifications import test_backup_notifications
 from server_py.services.secrets_migration import migrate_all_secrets_in_config
+from server_py.version import __version__ as APP_CODE_VERSION
 from server_py.services.panel_auth import (
     get_public_status as get_panel_auth_public_status,
     verify_panel_password,
@@ -42,7 +43,7 @@ from server_py.core.helpers import (
 
 router = APIRouter(tags=["system"])
 logger = get_logger("SystemRouter")
-APP_VERSION = (os.getenv("DUPLIMANAGER_VERSION") or "1.0.0").strip() or "1.0.0"
+APP_VERSION = (os.getenv("DUPLIMANAGER_VERSION") or APP_CODE_VERSION).strip() or APP_CODE_VERSION
 
 LOG_LINE_RE = re.compile(r"^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s*(.*)$")
 
