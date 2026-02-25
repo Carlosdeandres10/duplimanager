@@ -76,6 +76,7 @@ Decision actual:
 
 Tareas:
 - Documentar procedimiento local de mantenimiento (solo admin del servidor).
+- Formalizar herramienta local de mantenimiento (CLI) para soporte.
 - Registrar auditoria del evento de recuperacion.
 - Forzar cambio de contraseña del panel tras recuperacion (si aplica).
 
@@ -120,6 +121,15 @@ Criterios de aceptacion:
   - `notifications.email.smtpPassword`
   - credenciales de storages Wasabi (`accessId`, `accessKey`)
   - `duplicacyPassword` de storage y secretos de repo escritos desde altas nuevas
+- Herramienta local de mantenimiento (CLI) para soporte:
+  - estado del panel auth
+  - desbloqueo local (`panel-auth-unlock`)
+  - set local de contraseña (`panel-auth-set`)
+  - migración de secretos (`migrate-secrets`)
+  - uso interno del proveedor/soporte (no distribuir en cliente)
+- CORS endurecido y configurable desde `settings.cors`:
+  - deshabilitado por defecto (same-origin)
+  - sin wildcard `*` (se ignora aunque se configure)
 
 ### Configuracion nueva (manual, hasta tener UI)
 - `settings.panelAccess.cookieSecureMode`:
@@ -161,3 +171,26 @@ Nota operativa:
 ### Documentacion operativa creada
 - `docs/incident-recovery-panel-access.md`
 - `docs/deployment-hardening-windows.md`
+
+### Configuracion CORS (backend)
+- `settings.cors.enabled` (bool)
+- `settings.cors.allowOrigins` (lista de origenes explicitos)
+- `settings.cors.allowMethods` (lista)
+- `settings.cors.allowHeaders` (lista)
+- `settings.cors.allowCredentials` (bool)
+
+Ejemplo:
+```json
+{
+  "cors": {
+    "enabled": true,
+    "allowOrigins": ["https://panel.midominio.com"],
+    "allowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "allowHeaders": ["*"],
+    "allowCredentials": false
+  }
+}
+```
+
+Nota:
+- Los cambios de CORS se aplican al reiniciar el servicio.

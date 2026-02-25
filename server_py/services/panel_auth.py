@@ -272,6 +272,55 @@ def save_panel_access(*, enabled: bool, new_password: Optional[str], current_pas
     }
 
 
+def maintenance_get_panel_access_status() -> Dict[str, Any]:
+    cfg = _read_panel_access_cfg()
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "configured": bool(cfg.get("passwordBlob")),
+        "requiresAuth": bool(cfg.get("enabled")) and bool(cfg.get("passwordBlob")),
+        "cookieSecureMode": str(cfg.get("cookieSecureMode") or "auto"),
+        "sessionTtlSeconds": get_session_ttl_seconds(),
+    }
+
+
+def maintenance_disable_panel_auth(*, clear_password: bool = False) -> Dict[str, Any]:
+    existing_cfg = _read_panel_access_cfg()
+    password_blob = None if not clear_password else ""
+    if not clear_password:
+        password_blob = str(existing_cfg.get("passwordBlob") or "")
+    saved = _write_panel_access_cfg(False, password_blob)
+    _sessions.clear()
+    _login_failures.clear()
+    logger.warning(
+        "[AuthMaintenance] Protección del panel desactivada localmente clear_password=%s",
+        bool(clear_password),
+    )
+    return {
+        "enabled": bool(saved.get("enabled")),
+        "configured": bool(saved.get("passwordBlob")),
+        "requiresAuth": bool(saved.get("enabled")) and bool(saved.get("passwordBlob")),
+    }
+
+
+def maintenance_set_panel_password(*, password: str, enable: bool = True) -> Dict[str, Any]:
+    pwd = str(password or "").strip()
+    if len(pwd) < 4:
+        raise ValueError("La contraseña debe tener al menos 4 caracteres.")
+    password_blob = _encode_password_verifier(pwd)
+    saved = _write_panel_access_cfg(bool(enable), password_blob)
+    _sessions.clear()
+    _login_failures.clear()
+    logger.warning(
+        "[AuthMaintenance] Password del panel actualizada localmente enabled=%s",
+        bool(enable),
+    )
+    return {
+        "enabled": bool(saved.get("enabled")),
+        "configured": bool(saved.get("passwordBlob")),
+        "requiresAuth": bool(saved.get("enabled")) and bool(saved.get("passwordBlob")),
+    }
+
+
 def _cleanup_sessions() -> None:
     now = time.time()
     expired = [k for k, exp in _sessions.items() if exp <= now]

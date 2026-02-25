@@ -23,6 +23,9 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
 - No exponer puerto del backend directamente a Internet.
 - Firewall local: permitir solo origenes necesarios.
 - Si hay proxy, pasar `X-Forwarded-Proto` correctamente para cookies seguras en modo `auto`.
+- CORS:
+  - mantener deshabilitado por defecto (same-origin)
+  - si se habilita, usar solo `allowOrigins` explicitos (sin `*`)
 
 4. Panel web
 - Activar contraseña del panel.
@@ -39,6 +42,7 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
 - Verificar logs (`AuthAudit`, backups, restore).
 - Documentar procedimiento de recuperacion local de acceso.
 - Backup de `config/duplimanager.db` y carpeta `logs/` segun politica.
+- La herramienta `server_py.tools.maintenance` se considera tooling interno de soporte (no distribuir al cliente final).
 
 ## Checklist de validacion post-instalacion
 1. Abrir panel localmente -> OK
@@ -51,3 +55,4 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
 ## Notas
 - Cambios de `host` y `port` requieren reinicio del servicio.
 - Si se usa proxy HTTPS, validar que la app recibe `X-Forwarded-Proto: https`.
+- Cambios de `settings.cors` requieren reinicio del servicio (middleware se aplica al arrancar).

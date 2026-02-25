@@ -120,6 +120,13 @@
             <li><a href="#backend">Servidor de Procesos</a></li>
             <li><a href="#venv">Entornos Virtuales de Python</a></li>
 
+            <div class="nav-category">Seguridad y Hardening</div>
+            <li><a href="#security-model">Modelo de Amenaza</a></li>
+            <li><a href="#panel-hardening">Panel Web (Auth)</a></li>
+            <li><a href="#secrets-dpapi">Secretos y DPAPI</a></li>
+            <li><a href="#windows-hardening">Despliegue Windows Seguro</a></li>
+            <li><a href="#recovery-panel">Recuperación de Acceso</a></li>
+
             <div class="nav-category">Guías de Solución de Errores</div>
             <li><a href="#troubleshooting">Códigos de error y Reinicios</a></li>
         </ul>
@@ -177,8 +184,13 @@
         <h2 id="f-config">📂 Persistencia de Datos y Configuración (Estado del Usuario)</h2>
 
         <div class="file-card">
-            <h3>config/ <span class="badge">Archivos de Estado JSON</span></h3>
-            <p><strong>Visión del Producto:</strong> Para facilitar la portabilidad, el producto no exige instalar bases de datos gigantescas. El perfil, las cuentas en la nube de este usuario y los registros de sus tareas se guardan en archivos JSON ligeros, garantizando que el usuario entienda qué datos guarda la app de él.</p>
+            <h3>config/ <span class="badge">SQLite + Copias JSON</span></h3>
+            <p><strong>Visión del Producto:</strong> DupliManager persiste el estado principal en <code>config/duplimanager.db</code> (SQLite, más seguro frente a concurrencia) y además genera copias JSON de respaldo para inspección/portabilidad.</p>
+            <ul>
+                <li><strong>Fuente principal:</strong> <code>config/duplimanager.db</code> (tabla <code>config_store</code>).</li>
+                <li><strong>Copias de respaldo:</strong> <code>config/settings.json</code>, <code>config/storages.json</code>, <code>config/repositories.json</code>, etc.</li>
+                <li><strong>Seguridad:</strong> los secretos nuevos se migran/guardan protegidos con DPAPI (Windows) y no deben editarse a mano salvo incidencias controladas.</li>
+            </ul>
         </div>
 
         <h2 id="f-logs">📄 Auditoría y Registro Completo (Logs)</h2>
@@ -192,7 +204,7 @@
 
         <div class="file-card">
             <h3>python -m server_py.main <span class="badge badge-warning">Proceso Activo</span></h3>
-            <p><strong>Arranque del Motor de Fast API:</strong> DupliManager arranca el puerto local TCP invocando el Uvicorn (un emisor de red). Éste aloja permanentemente la web SPA en localhost:8500 por defecto.</p>
+            <p><strong>Arranque del Motor de Fast API:</strong> DupliManager arranca el puerto local TCP invocando Uvicorn. En versiones endurecidas, el bind por defecto es <code>127.0.0.1</code> (no <code>0.0.0.0</code>) para evitar exposición accidental del panel.</p>
             <p><strong>El problema de los "Servidores Fantasma" Win32:</strong> En Windows a diferencia de Linux, puede ocurrir que al cerrar bruscamente una consola o fallar al reiniciar el servicio el puerto `8500` siga "enganchado" a un subproceso python en segundo plano (zombie). DupliManager reportará que es incapaz de arrancar por puerto ocupado.</p>
             <p>Acuérdate del comando sagrado frente a cierres en falso:</p>
             <code>Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force</code>
@@ -204,6 +216,81 @@
             <h3>.venv/ <span class="badge">Aislamiento de Módulos</span></h3>
             <p><strong>Dato crítico:</strong> Nunca inicies "pip install X" a lo loco para instalar las dependencias si lo haces globalmente desde la computadora principal.</p> 
             <p>Mantenemos estrictamente encapsulado el servidor web a este directorio para no ensuciar otras aplicaciones del OS. El archivo `requirements.txt` define las cuatro librerías puntuales del motor. Actívalo en consola (`.venv\Scripts\Activate.ps1`) antes de levantar el servidor por comandos, caso contrario se quejará de la falta de un modulo FastAPI.</p>
+        </div>
+
+        <h2 id="security-model">🛡️ Modelo de Seguridad (Operación Realista)</h2>
+
+        <div class="file-card">
+            <h3>Threat Model DupliManager <span class="badge">Operación Cliente</span></h3>
+            <p><strong>Regla importante:</strong> DupliManager está diseñado para proteger el panel frente a atacantes de red y para reducir el riesgo de fuga de secretos si alguien roba la base de datos o copias de configuración. No está diseñado para resistir a un atacante con control administrativo total del servidor Windows.</p>
+            <ul>
+                <li><strong>Cubierto:</strong> hardening del panel, autenticación local, cookies seguras, rate limit, auditoría y protección de secretos en reposo con DPAPI.</li>
+                <li><strong>No cubierto completamente:</strong> un admin local malicioso en el host (RDP/shell con privilegios administrativos).</li>
+                <li><strong>Implicación práctica:</strong> la seguridad final depende también del hardening del propio Windows, VPN, firewall, MFA y control de accesos.</li>
+            </ul>
+            <p><strong>Documentación viva:</strong> ver <code>docs/security-plan.md</code>.</p>
+        </div>
+
+        <h2 id="panel-hardening">🔐 Endurecimiento del Panel Web (Auth)</h2>
+
+        <div class="file-card">
+            <h3>Autenticación Local + Sesiones <span class="badge">Implementado</span></h3>
+            <ul>
+                <li><strong>Contraseña del panel:</strong> se almacena como verificador (hash) protegido con DPAPI, no en texto plano.</li>
+                <li><strong>Rate limit / lockout:</strong> se bloquean temporalmente intentos repetidos de login fallidos (mitiga fuerza bruta por red).</li>
+                <li><strong>Cookies seguras:</strong> modo <code>auto / always / never</code> desde configuración del panel.</li>
+                <li><strong>TTL de sesión:</strong> configurable desde el panel (expiración deslizante).</li>
+                <li><strong>Auditoría:</strong> eventos <code>AuthAudit</code> para login correcto/fallido/bloqueo, logout y cambios de protección del panel.</li>
+            </ul>
+            <p><strong>Controles de admin en UI (Settings):</strong> host de bind, modo de cookies seguras y expiración de sesión.</p>
+            <div class="warn-alert">
+                <strong>Nota operativa:</strong> Cambiar <code>host</code> o <code>port</code> requiere reiniciar el servicio para que el bind tome efecto.
+            </div>
+        </div>
+
+        <h2 id="secrets-dpapi">🔐 Secretos y Protección en Reposo (DPAPI)</h2>
+
+        <div class="file-card">
+            <h3>Credenciales Wasabi / SMTP / Duplicacy <span class="badge">DPAPI</span></h3>
+            <p><strong>Objetivo:</strong> que un robo de <code>duplimanager.db</code> o de copias de <code>config/*.json</code> no exponga directamente las credenciales en claro.</p>
+            <ul>
+                <li><strong>Protegidos:</strong> <code>notifications.email.smtpPassword</code>, <code>accessId</code>, <code>accessKey</code>, <code>duplicacyPassword</code>, y secretos anidados en repositorios.</li>
+                <li><strong>Compatibilidad legacy:</strong> si un secreto antiguo sigue en claro, la app lo sigue leyendo y lo migra al reescribir.</li>
+                <li><strong>Migración activa:</strong> se puede ejecutar desde el panel (Settings → Mantenimiento de secretos) para convertir credenciales legacy a formato DPAPI.</li>
+            </ul>
+            <p><strong>Ruta API de mantenimiento:</strong> <code>POST /api/system/migrate-secrets</code> (requiere sesión autenticada del panel).</p>
+        </div>
+
+        <h2 id="windows-hardening">🪟 Despliegue Windows Seguro (Checklist)</h2>
+
+        <div class="file-card">
+            <h3>Hardening Recomendado para Cliente <span class="badge badge-warning">Operación</span></h3>
+            <ul>
+                <li><strong>Bind:</strong> mantener <code>127.0.0.1</code> por defecto y publicar remotamente solo vía VPN / reverse proxy HTTPS.</li>
+                <li><strong>Firewall:</strong> no exponer directamente el puerto del backend a Internet.</li>
+                <li><strong>Proxy HTTPS:</strong> pasar <code>X-Forwarded-Proto: https</code> si se usa modo de cookie segura <code>auto</code>.</li>
+                <li><strong>CORS:</strong> mantener deshabilitado por defecto (same-origin). Si se habilita, usar orígenes explícitos en <code>settings.cors.allowOrigins</code> (sin wildcard <code>*</code>).</li>
+                <li><strong>Usuario de servicio:</strong> preferir una cuenta dedicada con mínimo privilegio.</li>
+                <li><strong>Migración post-upgrade:</strong> ejecutar migración de secretos legacy a DPAPI tras actualizar instalaciones antiguas.</li>
+                <li><strong>Logs:</strong> revisar eventos <code>AuthAudit</code> y registros de backup/restore.</li>
+            </ul>
+            <p>Ver guía detallada: <code>docs/deployment-hardening-windows.md</code>.</p>
+        </div>
+
+        <h2 id="recovery-panel">🚑 Recuperación de Acceso al Panel (Sin Backdoor Web)</h2>
+
+        <div class="file-card">
+            <h3>Procedimiento de Mantenimiento Local <span class="badge">Incidencias</span></h3>
+            <p><strong>Decisión de seguridad:</strong> no usar código universal ni endpoint web de reset de contraseña. La recuperación de acceso se trata como una operación de mantenimiento local con acceso administrativo al servidor Windows.</p>
+            <p><strong>Política de distribución:</strong> la herramienta CLI de mantenimiento es <strong>solo para soporte/proveedor</strong> y no debe incluirse en paquetes entregados al cliente final.</p>
+            <ul>
+                <li>Parar el servicio de DupliManager.</li>
+                <li>Aplicar procedimiento local de mantenimiento (CLI) para reset controlado de protección del panel.</li>
+                <li>Arrancar el servicio y reconfigurar nueva contraseña de inmediato.</li>
+                <li>Revisar logs <code>AuthAudit</code> y documentar la incidencia.</li>
+            </ul>
+            <p><strong>CLI local (ejemplos):</strong> <code>python -m server_py.tools.maintenance panel-auth-status</code>, <code>panel-auth-unlock</code>, <code>panel-auth-unlock --clear-password</code>.</p>
+            <p>Guía operativa: <code>docs/incident-recovery-panel-access.md</code>.</p>
         </div>
 
 

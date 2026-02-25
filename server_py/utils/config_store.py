@@ -24,6 +24,13 @@ DEFAULTS = {
         "duplicacy_path": str(Path(__file__).parent.parent.parent / "bin" / "duplicacy.exe"),
         "language": "es",
         "theme": "dark",
+        "cors": {
+            "enabled": False,
+            "allowOrigins": [],
+            "allowMethods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allowHeaders": ["*"],
+            "allowCredentials": False,
+        },
         "notifications": {
             "healthchecks": {
                 "enabled": False,

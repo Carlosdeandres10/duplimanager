@@ -8,6 +8,7 @@ Restaurar el acceso al panel web cuando se olvida la contraseña local, sin intr
 - No existe endpoint web de reset de contraseña.
 - La recuperacion requiere acceso administrativo al servidor Windows (mantenimiento local).
 - Todo cambio debe quedar auditado en logs.
+- La herramienta CLI de mantenimiento es de uso interno del proveedor/soporte y no debe distribuirse a clientes.
 
 ## Modelo de seguridad
 - Este procedimiento NO empeora el modelo real de amenaza:
@@ -25,10 +26,17 @@ Restaurar el acceso al panel web cuando se olvida la contraseña local, sin intr
 - Parar el servicio/proceso antes de tocar configuracion.
 
 3. Resetear proteccion del panel (local)
-- Ejecutar el procedimiento interno de mantenimiento local (script/CLI del equipo de soporte).
+- Ejecutar la herramienta local de mantenimiento (CLI interno de soporte) en el servidor.
 - Accion esperada:
   - desactivar temporalmente `panelAccess.enabled`
   - opcionalmente borrar `passwordBlob` si se necesita reset completo
+
+Ejemplos (PowerShell, uso interno de soporte):
+```powershell
+python -m server_py.tools.maintenance panel-auth-status
+python -m server_py.tools.maintenance panel-auth-unlock
+python -m server_py.tools.maintenance panel-auth-unlock --clear-password
+```
 
 4. Arrancar servicio
 - Arrancar de nuevo DupliManager.
@@ -53,9 +61,10 @@ Restaurar el acceso al panel web cuando se olvida la contraseña local, sin intr
 - No exponer el puerto directamente a Internet.
 - Usar contraseñas de panel fuertes y rotacion si cambia el personal.
 - Revisar logs de `AuthAudit` tras incidencias.
+- No desplegar ni publicar la herramienta de mantenimiento en instaladores de cliente (tooling interno).
 
 ## Estado actual del producto
 - Ya existe auditoria de auth (login ok/fallo/bloqueo/logout/cambios de proteccion).
+- Ya existe herramienta local de mantenimiento (CLI) para soporte.
 - Pendiente recomendado:
-  - herramienta local de mantenimiento (CLI) formalizada para soporte
   - forzado explicito de cambio de contraseña post-recuperacion

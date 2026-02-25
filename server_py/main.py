@@ -27,12 +27,66 @@ from server_py.services.panel_auth import is_panel_auth_enabled, is_session_vali
 logger = get_logger("Server")
 app = FastAPI(title="DupliManager API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+def _as_list_of_str(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(x or "").strip() for x in value if str(x or "").strip()]
+    if isinstance(value, str):
+        raw = value.replace("\r", "\n")
+        items: List[str] = []
+        for chunk in raw.split("\n"):
+            for piece in chunk.split(","):
+                s = piece.strip()
+                if s:
+                    items.append(s)
+        return items
+    return []
+
+
+def _configure_cors_from_settings() -> None:
+    try:
+        s = config_store.settings.read() or {}
+        raw = dict(s.get("cors") or {})
+        enabled = bool(raw.get("enabled", False))
+        if not enabled:
+            logger.info("[CORS] Deshabilitado (same-origin recomendado por defecto)")
+            return
+
+        requested_origins = _as_list_of_str(raw.get("allowOrigins"))
+        allow_origins: List[str] = []
+        dropped_wildcard = False
+        for origin in requested_origins:
+            if origin == "*":
+                dropped_wildcard = True
+                continue
+            allow_origins.append(origin)
+        if dropped_wildcard:
+            logger.warning("[CORS] Se ignoró '*' en allowOrigins. Usa orígenes explícitos.")
+        if not allow_origins:
+            logger.warning("[CORS] enabled=true pero no hay orígenes válidos; CORS queda deshabilitado")
+            return
+
+        allow_methods = _as_list_of_str(raw.get("allowMethods")) or ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        allow_headers = _as_list_of_str(raw.get("allowHeaders")) or ["*"]
+        allow_credentials = bool(raw.get("allowCredentials", False))
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allow_origins,
+            allow_methods=allow_methods,
+            allow_headers=allow_headers,
+            allow_credentials=allow_credentials,
+        )
+        logger.info(
+            "[CORS] Habilitado origins=%s credentials=%s",
+            len(allow_origins),
+            allow_credentials,
+        )
+    except Exception:
+        logger.exception("[CORS] Error aplicando configuración CORS")
+
+
+_configure_cors_from_settings()
 
 
 @app.middleware("http")
