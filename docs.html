@@ -110,6 +110,7 @@
         <h2>📚 Índice de Operaciones</h2>
         <ul>
             <li><a href="#intro">Visión General</a></li>
+            <li><a href="#user-manual-link">Manual de Usuario</a></li>
             
             <div class="nav-category">Almacenamientos Físicos</div>
             <li><a href="#f-config">config/ (Bases de datos)</a></li>
@@ -126,6 +127,7 @@
             <li><a href="#secrets-dpapi">Secretos y DPAPI</a></li>
             <li><a href="#windows-hardening">Despliegue Windows Seguro</a></li>
             <li><a href="#windows-packaging">Empaquetado Windows</a></li>
+            <li><a href="#updates-channel">Canal de Actualizaciones</a></li>
             <li><a href="#system-paths-diag">Rutas del Sistema</a></li>
             <li><a href="#recovery-panel">Recuperación de Acceso</a></li>
 
@@ -140,6 +142,10 @@
             <h1>Manual de Operaciones DupliManager</h1>
             <p>Guía Técnica de Administración de Sistemas y Redes para el despliegue de copias de seguridad.</p>
         </header>
+
+        <div class="sysadmin-alert" id="user-manual-link">
+            <strong>📘 Manual de Usuario:</strong> La guía funcional para usuarios finales/operadores está en <code>docs/user-manual.html</code> (versión visual) y en <code>docs/user-manual.md</code> (texto editable), y también se incluye en el instalador de Windows (menú inicio + enlace “Manual de usuario” en el footer del panel).
+        </div>
 
         <div class="sysadmin-alert">
             <strong>🚀 Visión 10,000 Pies:</strong> DupliManager no es un software monolítico bloqueado. Es una interfaz ligera (Frontend) y un orquestador (Backend) diseñados específicamente para interactuar por debajo con la herramienta de la línea de comandos de terminal, `duplicacy`. Lo que vayas pinchando en el panel, el sistema lo traduce a comandos de consola detrás de las cortinas.
@@ -245,6 +251,7 @@
                 <li><strong>Auditoría:</strong> eventos <code>AuthAudit</code> para login correcto/fallido/bloqueo, logout y cambios de protección del panel.</li>
             </ul>
             <p><strong>Controles de admin en UI (Settings):</strong> host de bind, modo de cookies seguras y expiración de sesión.</p>
+            <p><strong>Nota UX:</strong> la contraseña local del panel se guarda con el botón específico <code>Guardar contraseña del panel</code> (no con <code>Guardar Configuración</code> del bloque general).</p>
             <div class="warn-alert">
                 <strong>Nota operativa:</strong> Cambiar <code>host</code> o <code>port</code> requiere reiniciar el servicio para que el bind tome efecto.
             </div>
@@ -306,12 +313,29 @@
                 <li><strong>Build soporte:</strong> <code>scripts/build-support-maintenance.ps1</code> (CLI interna de mantenimiento, uso exclusivo de soporte/proveedor).</li>
                 <li><strong>Instalador Inno Setup:</strong> <code>installer/DupliManager.iss</code> + wrapper <code>scripts/build-installer.ps1</code> (modos <code>client</code>/<code>support</code>, con servicio Windows por WinSW en cliente).</li>
                 <li><strong>WinSW:</strong> wrapper de servicio Windows para arrancar DupliManager automáticamente y mantener el scheduler de backups activo.</li>
-                <li><strong>CI/CD GitHub:</strong> workflow Windows <code>.github/workflows/release-windows-installer.yml</code> para compilar y publicar instaladores en GitHub Releases con checksum.</li>
+                <li><strong>CI/CD GitHub:</strong> workflow Windows <code>.github/workflows/release-windows-installer.yml</code> para compilar instaladores, generar checksum/metadata y publicar en GitHub Releases.</li>
                 <li><strong>Scripts de release:</strong> <code>scripts/release.ps1</code> (interactivo, recomendado), más <code>release-local.ps1</code> y <code>release-github.ps1</code> para uso avanzado.</li>
+                <li><strong>Sincronización de versión:</strong> los scripts de release actualizan <code>server_py/version.py</code> para que el footer del panel muestre la versión real instalada.</li>
                 <li><strong>Dependencias fijas:</strong> usar <code>requirements-lock.txt</code> para reproducibilidad.</li>
+                <li><strong>Manual local:</strong> el instalador cliente incluye <code>docs.html</code> y <code>docs/</code> (incluyendo <code>docs/user-manual.md</code>) y expone acceso directo en menú inicio + enlace desde la app.</li>
                 <li><strong>Checklist:</strong> pruebas MVP, arranque en VM Windows limpia y verificación de que el CLI interno no viaja en la distribución cliente.</li>
             </ul>
             <p>Guía detallada: <code>docs/windows-packaging.md</code>.</p>
+        </div>
+
+        <h2 id="updates-channel">⬆️ Canal de Actualizaciones (GitHub Privado + Wasabi)</h2>
+
+        <div class="file-card">
+            <h3>Distribución Cliente y <code>latest.json</code> <span class="badge">Updates</span></h3>
+            <p><strong>Modelo operativo:</strong> el código y los releases pueden vivir en un repositorio GitHub privado, mientras que los instaladores de cliente y el archivo <code>latest.json</code> se publican en Wasabi (prefijo de releases) para que los servidores cliente puedan consultar actualizaciones sin credenciales de GitHub.</p>
+            <ul>
+                <li><strong>Workflow:</strong> genera <code>latest.json</code>, checksum y metadatos, y los sube a Wasabi (cliente) cuando se publica una release.</li>
+                <li><strong>Secreto clave:</strong> <code>WASABI_PUBLIC_BASE_URL</code> (base pública del canal de releases, ej. <code>.../duplimanager/client</code>).</li>
+                <li><strong>Comprobación en panel:</strong> el backend consulta <code>latest.json</code> en <code>GET /api/system/update-check</code> y la UI muestra aviso en el footer si hay versión nueva.</li>
+                <li><strong>Error típico:</strong> <code>HTTP 403</code> al consultar updates si el prefijo de Wasabi no tiene lectura pública (<code>s3:GetObject</code>).</li>
+                <li><strong>Nota de almacenamiento:</strong> actualmente el instalador puede subirse tanto en raíz del canal como en carpeta versionada (duplica espacio, simplifica rollback).</li>
+            </ul>
+            <p><strong>URL por defecto del canal:</strong> <code>https://duplimanager.s3.eu-central-1.wasabisys.com/duplimanager/client/latest.json</code>.</p>
         </div>
 
         <h2 id="system-paths-diag">🗂️ Rutas del Sistema (Diagnóstico en Panel)</h2>
@@ -330,7 +354,7 @@
         </div>
 
 
-        <h2 id="f-structure">🏗️ Arquitectura de Ficheros (Qué hace cada cosa)</h2>
+        <h2 id="f-structure-files">🏗️ Arquitectura de Ficheros (Qué hace cada cosa)</h2>
 
         <div class="file-card">
             <h3>server_py/routers/ <span class="badge">Rutas de la API Base</span></h3>
@@ -368,7 +392,7 @@
         <div class="file-card">
             <h3>Error: Nombre de Archivo muy largo (WinError 206) <span class="badge badge-warning">Limites SO</span></h3>
             <p>A veces al seleccionar 5,000 carpetas parciales para una restauración selectiva cruzabas el infame límite de los 32.768 caracteres de argumento en el CMD de Windows, crasheando localmente el servicio de subida a la nube de Duplicacy.</p>
-            <p><strong>Mitigación en DupliManager:</strong> Ya está subsanado. El motor creará y escribirá un `tempfile` físico con la flag `-ignore` que Duplicacy lee, por lo que es inmune asumiendo que el Disco Local primario no este 100% lleno. Solo revisa que tengas 1mb libre de espacio.</p>
+            <p><strong>Mitigación en DupliManager:</strong> Ya está subsanado. La restauración selectiva se trocea en lotes (batching) de patrones para no superar el límite de longitud de argumentos de Windows. Si vuelve a aparecer, revisar logs de restore y espacio libre temporal en disco.</p>
         </div>
 
     </main>

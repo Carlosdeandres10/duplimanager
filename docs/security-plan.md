@@ -250,3 +250,27 @@ Nota:
 - Procedimiento de upgrade/rollback automatizable
 - Estrategia de auto-updater o canal de upgrades firmados
 - Pipeline CI/CD de release estable (GitHub Actions, tags `v*`) para reducir pasos manuales
+
+## Fase 1.7 / Operación de releases y updates (cliente)
+### Hecho
+- Workflow de GitHub Actions para release Windows:
+  - build instalador
+  - checks de sintaxis y tests MVP
+  - GitHub Release
+  - publicación opcional a Wasabi (cliente)
+- Canal de updates con `latest.json` en Wasabi (repo privado en GitHub + distribución pública controlada para clientes).
+- Comprobación de actualizaciones en el panel (banner en footer):
+  - backend `GET /api/system/update-check`
+  - URL de `latest.json` gestionada por configuración/fallback
+- URL de updates fijada para despliegues cliente (Wasabi releases).
+- Versión runtime de la app centralizada (`server_py/version.py`) y sincronizada automáticamente por scripts de release (`release-local.ps1` / `release-github.ps1`) para evitar descuadres entre tag, instalador y footer UI.
+- Manual local incluido en instalador y accesible desde la app (`Manual de usuario`).
+
+### Riesgos operativos conocidos (controlados)
+- Si `latest.json` devuelve `403`, la detección de updates falla hasta aplicar policy pública de solo lectura al prefijo de releases.
+- El workflow actual publica el instalador tanto en raíz como en carpeta versionada de Wasabi (duplica espacio, simplifica rollback/descarga directa).
+
+### Pendiente (siguiente bloque)
+- Botón de descarga/instalación de actualización desde el panel (fase 2 updater).
+- Automatizar verificación post-publicación de `latest.json` accesible públicamente.
+- Optimizar publicación a Wasabi para no duplicar instalador en raíz y carpeta versionada (opcional).

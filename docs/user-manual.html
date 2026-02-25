@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>DupliManager - Manual de Usuario</title>
+  <style>
+    :root {
+      --bg: #071025;
+      --panel: #0d1833;
+      --panel-2: #101f40;
+      --text: #e8eefc;
+      --muted: #9db0d8;
+      --line: #20335f;
+      --accent: #6d7cff;
+      --accent2: #37d0b2;
+      --warn: #f5b942;
+      --ok: #32d38a;
+      --max: 1080px;
+      --nav: 280px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 500px at 20% -10%, #1b2f66 0%, transparent 55%),
+                  radial-gradient(900px 400px at 100% 0%, #1a0f46 0%, transparent 55%),
+                  var(--bg);
+      color: var(--text);
+      font: 15px/1.55 "Segoe UI", system-ui, sans-serif;
+      display: flex;
+    }
+    nav {
+      width: var(--nav);
+      min-width: var(--nav);
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      overflow-y: auto;
+      background: rgba(8, 14, 29, 0.9);
+      border-right: 1px solid var(--line);
+      padding: 20px 14px;
+    }
+    nav h1 {
+      font-size: 18px;
+      margin: 0 0 6px;
+      color: #fff;
+    }
+    nav p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .nav-group {
+      margin: 14px 0;
+    }
+    .nav-label {
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #86a0d6;
+      font-size: 11px;
+      margin: 8px 8px;
+      font-weight: 700;
+    }
+    nav a {
+      display: block;
+      color: var(--text);
+      text-decoration: none;
+      padding: 8px 10px;
+      border-radius: 10px;
+      margin: 2px 0;
+      border: 1px solid transparent;
+    }
+    nav a:hover {
+      background: rgba(109,124,255,.12);
+      border-color: rgba(109,124,255,.2);
+    }
+    main {
+      width: 100%;
+      max-width: calc(var(--max) + 80px);
+      padding: 28px 40px 60px;
+      margin: 0 auto;
+    }
+    header.hero {
+      background: linear-gradient(180deg, rgba(16,31,64,.85), rgba(10,19,40,.9));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 24px;
+      margin-bottom: 22px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    }
+    .eyebrow {
+      color: var(--accent2);
+      font-weight: 700;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 6px;
+    }
+    header.hero h2 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.15;
+    }
+    header.hero p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+    .callout {
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(14, 25, 52, .75);
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+    .callout.ok { border-left: 4px solid var(--ok); }
+    .callout.warn { border-left: 4px solid var(--warn); }
+    section {
+      background: rgba(13, 24, 51, .86);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 18px;
+      scroll-margin-top: 18px;
+    }
+    section h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      color: #fff;
+    }
+    section h4 {
+      margin: 14px 0 8px;
+      color: #dce7ff;
+      font-size: 16px;
+    }
+    p { margin: 8px 0; }
+    ul, ol {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+    li { margin: 4px 0; }
+    code {
+      background: #050a16;
+      border: 1px solid var(--line);
+      color: #d8e4ff;
+      padding: 2px 6px;
+      border-radius: 7px;
+      font-family: Consolas, monospace;
+      font-size: .92em;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .capture {
+      margin-top: 10px;
+      border: 1px dashed #385594;
+      border-radius: 12px;
+      background: rgba(8, 15, 31, .7);
+      padding: 10px 12px;
+      color: #a9bee8;
+      font-size: 13px;
+    }
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 18px;
+    }
+    @media (max-width: 980px) {
+      body { display: block; }
+      nav {
+        position: static;
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+      main { padding: 18px 14px 40px; }
+      header.hero h2 { font-size: 28px; }
+      .grid2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <h1>📘 Manual de Usuario</h1>
+    <p>DupliManager (uso diario)</p>
+    <div class="nav-group">
+      <div class="nav-label">Inicio</div>
+      <a href="#primer-arranque">Primer arranque</a>
+      <a href="#navegacion">Navegación</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Operación</div>
+      <a href="#repositorios">Repositorios</a>
+      <a href="#backup">Crear backup</a>
+      <a href="#tareas">Tareas programadas</a>
+      <a href="#restore">Restaurar</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Configuración</div>
+      <a href="#configuracion">Configuración general</a>
+      <a href="#panel-auth">Contraseña del panel</a>
+      <a href="#notificaciones">Notificaciones</a>
+      <a href="#logs">Logs</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Mantenimiento</div>
+      <a href="#updates">Actualizaciones</a>
+      <a href="#problemas">Problemas comunes</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Soporte</div>
+      <a href="/docs.html" target="_blank" rel="noopener">Manual técnico</a>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="eyebrow">DupliManager</div>
+      <h2>Manual de Usuario</h2>
+      <p>Guía práctica para instalar, configurar y usar el panel de copias de seguridad. Está orientada a uso real en clientes (Windows) sin entrar en detalles de desarrollo.</p>
+    </header>
+
+    <section id="primer-arranque">
+      <h3>1. Primer arranque</h3>
+      <ol>
+        <li>Ejecuta el instalador como administrador.</li>
+        <li>El instalador crea el servicio Windows <code>DupliManager</code>.</li>
+        <li>Abre el panel en <code>http://127.0.0.1:8500</code>.</li>
+      </ol>
+      <div class="callout ok">
+        Debes ver en el footer del panel: <strong>Servidor activo</strong>.
+      </div>
+      <div class="capture">Captura sugerida: Dashboard con footer y estado del servidor.</div>
+    </section>
+
+    <section id="navegacion">
+      <h3>2. Navegación del panel</h3>
+      <ul>
+        <li><strong>Dashboard</strong>: resumen visual de backups.</li>
+        <li><strong>Repositorios</strong>: destinos Wasabi/local.</li>
+        <li><strong>Backups</strong>: tareas de copia.</li>
+        <li><strong>Tareas</strong>: programación automática.</li>
+        <li><strong>Restaurar</strong>: recuperar revisiones.</li>
+        <li><strong>Configuración</strong>: ajustes globales.</li>
+        <li><strong>Logs</strong>: registros del sistema.</li>
+      </ul>
+    </section>
+
+    <section id="repositorios">
+      <h3>3. Crear un repositorio (destino)</h3>
+      <p>Un repositorio es el destino donde se guardarán las copias (por ejemplo Wasabi o una ruta local).</p>
+      <div class="grid2">
+        <div>
+          <h4>Repositorio local</h4>
+          <ol>
+            <li>Ve a <code>Repositorios</code>.</li>
+            <li>Pulsa <code>Nuevo Repositorio</code>.</li>
+            <li>Selecciona <code>Local</code>.</li>
+            <li>Escribe la ruta del storage (ej. <code>D:\Backups\duplicacy-storage</code>).</li>
+            <li>Guarda.</li>
+          </ol>
+        </div>
+        <div>
+          <h4>Repositorio Wasabi S3</h4>
+          <ol>
+            <li>Ve a <code>Repositorios</code>.</li>
+            <li>Pulsa <code>Nuevo Repositorio</code>.</li>
+            <li>Selecciona <code>Wasabi S3</code>.</li>
+            <li>Rellena endpoint, región, bucket y credenciales.</li>
+            <li>Guarda.</li>
+          </ol>
+        </div>
+      </div>
+      <div class="capture">Capturas sugeridas: lista “Repositorios” + modal “Nuevo Repositorio”.</div>
+    </section>
+
+    <section id="backup">
+      <h3>4. Crear un backup</h3>
+      <ol>
+        <li>Ve a <code>Backups</code> y pulsa <code>Nuevo Backup</code>.</li>
+        <li>Selecciona (o escribe) la carpeta a respaldar.</li>
+        <li>Elige el repositorio de destino.</li>
+        <li>Configura el <code>Backup ID (Snapshot ID)</code>.</li>
+        <li>(Opcional) Configura filtros y notificaciones.</li>
+        <li>Pulsa <code>Verificar Configuración</code>.</li>
+        <li>Pulsa <code>Crear Backup</code>.</li>
+      </ol>
+      <div class="callout warn">
+        <strong>Importante:</strong> reutilizar el mismo <code>Backup ID</code> continúa el histórico (incremental a nivel de chunks). Usa un ID nuevo si quieres un histórico separado.
+      </div>
+      <div class="capture">Capturas sugeridas: modal “Nuevo Backup” (parte superior e inferior).</div>
+    </section>
+
+    <section id="tareas">
+      <h3>5. Tareas programadas</h3>
+      <p>La pantalla <code>Tareas</code> centraliza la programación de copias automáticas por backup.</p>
+      <ul>
+        <li>Activar / Pausar programación</li>
+        <li>Ejecutar <code>Ahora</code></li>
+        <li>Editar horarios</li>
+        <li>Ver última y próxima ejecución</li>
+      </ul>
+      <div class="callout ok">
+        Si DupliManager está instalado como servicio Windows, el scheduler sigue funcionando aunque nadie haya iniciado sesión.
+      </div>
+      <div class="capture">Captura sugerida: “Tareas programadas”.</div>
+    </section>
+
+    <section id="restore">
+      <h3>6. Restaurar archivos y carpetas</h3>
+      <ol>
+        <li>Ve a <code>Restaurar</code>.</li>
+        <li>Selecciona el <code>Storage</code>.</li>
+        <li>Selecciona el <code>Backup ID (Snapshot ID)</code>.</li>
+        <li>(Opcional) Indica una <code>Ruta de restauración</code>.</li>
+        <li>Pulsa <code>Cargar revisiones</code>.</li>
+        <li>Elige una revisión.</li>
+        <li>Elige restauración completa o parcial.</li>
+        <li>Pulsa <code>Restaurar</code>.</li>
+      </ol>
+      <h4>Durante la restauración</h4>
+      <ul>
+        <li>Verás <strong>log en vivo</strong> en el panel.</li>
+        <li>El botón cambia a <code>⏹ Terminar</code> mientras se ejecuta.</li>
+        <li>Al terminar o fallar, podrás usar <code>✅ Finalizar</code> para limpiar la vista.</li>
+      </ul>
+      <p class="hint">Si el selector visual de carpetas no está disponible en la versión servidor, escribe la ruta manualmente.</p>
+      <div class="capture">Captura sugerida: pantalla “Restaurar” con detalles de progreso y log.</div>
+    </section>
+
+    <section id="configuracion">
+      <h3>7. Configuración general</h3>
+      <p>En <code>Configuración</code> puedes ajustar:</p>
+      <ul>
+        <li>Ruta de <code>Duplicacy CLI</code></li>
+        <li>Host/puerto del servidor (bind)</li>
+        <li>Idioma y tema</li>
+        <li>Cookies seguras y expiración de sesión</li>
+        <li>Healthchecks / Email (globales)</li>
+        <li>Migración de secretos legacy a DPAPI</li>
+        <li>Rutas del sistema (diagnóstico)</li>
+      </ul>
+      <div class="capture">Capturas sugeridas: Configuración general + Rutas del sistema.</div>
+    </section>
+
+    <section id="panel-auth">
+      <h3>8. Activar contraseña del panel (muy importante)</h3>
+      <ol>
+        <li>Ve a <code>Configuración</code> → <code>Acceso al panel (contraseña local)</code>.</li>
+        <li>Marca <code>Requerir contraseña para acceder al panel web</code>.</li>
+        <li>Escribe <code>Nueva contraseña</code> y <code>Confirmar nueva contraseña</code>.</li>
+        <li>Pulsa <strong><code>Guardar contraseña del panel</code></strong>.</li>
+      </ol>
+      <div class="callout warn">
+        <strong>Muy común:</strong> el botón <code>Guardar Configuración</code> (general) <u>no guarda</u> la contraseña del panel. Ese bloque tiene su propio botón: <code>Guardar contraseña del panel</code>.
+      </div>
+      <p>Después, en el footer debería aparecer <strong>Panel protegido</strong>.</p>
+      <div class="capture">Captura sugerida: bloque “Acceso al panel (contraseña local)”.</div>
+    </section>
+
+    <section id="notificaciones">
+      <h3>9. Notificaciones (Healthchecks y Email)</h3>
+      <h4>Healthchecks (global)</h4>
+      <ul>
+        <li>URL del endpoint</li>
+        <li>Palabra de éxito</li>
+        <li>Timeout</li>
+        <li>Incluir log del backup</li>
+        <li>Botón <code>Probar Healthchecks</code></li>
+      </ul>
+      <h4>Email (global)</h4>
+      <ul>
+        <li>Servidor SMTP, puerto, STARTTLS</li>
+        <li>Usuario/contraseña</li>
+        <li>Remitente y destino</li>
+        <li>Prefijo de asunto</li>
+        <li>Botón <code>Probar Email</code></li>
+      </ul>
+      <div class="capture">Captura sugerida: Configuración → bloques Healthchecks y Email.</div>
+    </section>
+
+    <section id="logs">
+      <h3>10. Logs del sistema</h3>
+      <p>La pantalla <code>Logs</code> permite filtrar y exportar registros del sistema.</p>
+      <ul>
+        <li>Archivo de log</li>
+        <li>Búsqueda por texto</li>
+        <li>Filtros por nivel/tipo</li>
+        <li>Rango de fechas</li>
+        <li>Exportar filtrado</li>
+      </ul>
+      <p class="hint">Útil para revisar errores de backups/restores y eventos de seguridad (<code>AuthAudit</code>).</p>
+      <div class="capture">Captura sugerida: “Logs del Sistema”.</div>
+    </section>
+
+    <section id="updates">
+      <h3>11. Actualizaciones de DupliManager</h3>
+      <p>Cuando hay una versión nueva disponible, DupliManager muestra un aviso en el footer:</p>
+      <ul>
+        <li><code>Nueva versión X.Y.Z · Descargar</code></li>
+      </ul>
+      <ol>
+        <li>Pulsa <code>Descargar</code>.</li>
+        <li>Ejecuta el instalador como administrador.</li>
+        <li>Completa la actualización.</li>
+        <li>Vuelve a abrir el panel y verifica la versión en el footer.</li>
+      </ol>
+      <div class="callout ok">
+        La URL de updates (<code>latest.json</code>) está gestionada por Caisoft y la app la consulta automáticamente al abrir.
+      </div>
+    </section>
+
+    <section id="problemas">
+      <h3>12. Problemas comunes</h3>
+      <h4>No arranca el panel</h4>
+      <ul>
+        <li>Revisar servicio <code>DupliManager</code> en <code>services.msc</code>.</li>
+        <li>Revisar logs del sistema.</li>
+      </ul>
+      <h4>No detecta actualizaciones</h4>
+      <ul>
+        <li>Comprobar salida a Internet del servidor.</li>
+        <li>Comprobar acceso a <code>latest.json</code>.</li>
+        <li>Recargar la app (<code>Ctrl+F5</code>).</li>
+      </ul>
+      <h4>No se guarda la contraseña del panel</h4>
+      <ul>
+        <li>Revisar que pulsas <code>Guardar contraseña del panel</code> (no el botón general).</li>
+      </ul>
+    </section>
+
+    <p class="footer-note">
+      Este manual describe el uso del panel. Para documentación técnica/operativa (instalador, WinSW, hardening, releases y Wasabi), abre <a href="/docs.html" target="_blank" rel="noopener" style="color:#9ec5ff;">docs.html</a>.
+    </p>
+  </main>
+</body>
+</html>
+

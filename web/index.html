@@ -8,7 +8,7 @@
       name="description"
       content="Software de copias de seguridad con deduplicación, powered by Duplicacy"
     />
-    <link rel="stylesheet" href="/css/styles.css?v=20260222-theme2" />
+    <link rel="stylesheet" href="/css/styles.css?v=20260225-topstatus2" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>🛡️</text></svg>"
@@ -90,14 +90,8 @@
         </nav>
 
         <div class="sidebar-footer">
-          <div id="server-status">
-            <span class="badge badge-info">⏳ Conectando...</span>
-          </div>
-          <div id="auth-status-badge" class="version">🔓 Sin contraseña</div>
-          <div id="panel-logout-wrap" style="display:none;">
-            <button id="btn-panel-logout" type="button" class="btn btn-ghost btn-sm">🚪 Cerrar sesión</button>
-          </div>
-          <a class="footer-link" href="/docs.html" target="_blank" rel="noopener noreferrer">📘 Manual de usuario</a>
+          <a class="footer-link" href="/docs/user-manual.html" target="_blank" rel="noopener noreferrer">📘 Manual de usuario</a>
+          <a class="footer-link" href="/docs.html" target="_blank" rel="noopener noreferrer">🛠️ Manual técnico</a>
           <div id="app-version-footer" class="version">
             v… · Powered by Caisoft
           </div>
@@ -107,6 +101,16 @@
 
       <!-- ═══ MAIN CONTENT ═══ -->
       <main class="main-content">
+        <div class="top-status-panel" aria-label="Estado del sistema y sesión">
+          <div id="server-status">
+            <span class="badge badge-info">⏳ Conectando...</span>
+          </div>
+          <div id="auth-status-badge" class="top-status-text">🔓 Sin contraseña</div>
+          <div id="panel-logout-wrap" style="display:none;">
+            <button id="btn-panel-logout" type="button" class="btn btn-ghost btn-sm">🚪 Cerrar sesión</button>
+          </div>
+        </div>
+
         <!-- ─── DASHBOARD VIEW ─── -->
         <div id="view-dashboard" class="view active">
           <div class="page-header">

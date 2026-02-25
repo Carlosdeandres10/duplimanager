@@ -78,13 +78,13 @@ Source: "winsw\DupliManagerService.xml"; DestDir: "{app}"; DestName: "{#ServiceX
 [Icons]
 #if BuildMode != "support"
 Name: "{group}\Abrir panel DupliManager"; Filename: "http://127.0.0.1:8500"
-Name: "{group}\Manual de usuario"; Filename: "{app}\docs.html"
+Name: "{group}\Manual de usuario"; Filename: "{app}\docs\user-manual.html"
 Name: "{group}\DupliManager (modo consola)"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\Abrir carpeta de instalación"; Filename: "{app}"
 Name: "{autodesktop}\DupliManager"; Filename: "http://127.0.0.1:8500"; Tasks: desktopicon
 #else
 Name: "{group}\CLI mantenimiento (Soporte)"; Filename: "{app}\{#AppExeName}"
-Name: "{group}\Manual de usuario"; Filename: "{app}\docs.html"
+Name: "{group}\Manual de usuario"; Filename: "{app}\docs\user-manual.html"
 Name: "{group}\Abrir carpeta de instalación"; Filename: "{app}"
 #endif
 

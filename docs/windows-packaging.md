@@ -122,7 +122,9 @@ Qué hace:
 5. Ejecuta pruebas MVP + validaciones de sintaxis
 6. Genera build (`PyInstaller`) + instalador (`Inno Setup`)
 7. Calcula `SHA256`
-8. Publica artefactos y (si hay tag `v*`) crea/actualiza GitHub Release
+8. Genera `latest.json` (cliente) para comprobación de updates en panel
+9. Publica artefactos en Wasabi (cliente, si hay secrets configurados)
+10. Publica artefactos y (si hay tag `v*`) crea/actualiza GitHub Release
 
 ### Disparadores
 - `push` a tags `v*` (publica Release)
@@ -137,6 +139,73 @@ Qué hace:
    ```
 3. Esperar workflow `Release Windows Installer`
 4. Descargar el `.exe` desde GitHub Releases
+
+### Repositorio privado + distribución a clientes (recomendado)
+Si el repositorio de GitHub es privado:
+- **GitHub Releases** sirve para CI/CD interno y control del equipo.
+- **Clientes** deberían descargar desde un canal externo (ej. Wasabi) para no requerir acceso al repo.
+
+Canal recomendado:
+- `WASABI_PUBLIC_BASE_URL/latest.json`
+- instaladores y artefactos en Wasabi bajo un prefijo versionado.
+
+## Publicación de updates en Wasabi (`latest.json`)
+El workflow puede publicar el instalador de cliente y los metadatos de actualización en Wasabi (S3 compatible).
+
+### Secrets de GitHub Actions requeridos
+- `WASABI_ACCESS_KEY_ID`
+- `WASABI_SECRET_ACCESS_KEY`
+- `WASABI_BUCKET`
+- `WASABI_ENDPOINT` (ej. `https://s3.eu-central-1.wasabisys.com`)
+- `WASABI_REGION` (ej. `eu-central-1`)
+- `WASABI_RELEASES_PREFIX` (ej. `duplimanager/client`)
+- `WASABI_PUBLIC_BASE_URL` (ej. `https://duplimanager.s3.eu-central-1.wasabisys.com/duplimanager/client`)
+
+### Artefactos publicados en Wasabi (cliente)
+Raíz del canal (`<prefix>/`):
+- `latest.json`
+- `DupliManager-client-setup-x.y.z.exe`
+- `SHA256SUMS.txt`
+- `release-metadata.json`
+- `release-notes.md`
+
+Carpeta versionada (`<prefix>/<version>/`):
+- `DupliManager-client-setup-x.y.z.exe`
+- `SHA256SUMS.txt`
+- `release-metadata.json`
+- `release-notes.md`
+
+Nota:
+- Actualmente el instalador se publica tanto en la raíz como en la carpeta versionada (duplica espacio, pero simplifica descargas directas y rollback).
+- `latest.json` apunta al instalador de la raíz del canal.
+
+### Política pública mínima del bucket (solo releases)
+El backend de DupliManager consulta `latest.json` desde el servidor Windows, por lo que el objeto debe ser legible.
+
+Ejemplo de policy (ajusta bucket/prefijo):
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadDupliManagerReleases",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": ["s3:GetObject"],
+      "Resource": ["arn:aws:s3:::duplimanager/duplimanager/client/*"]
+    }
+  ]
+}
+```
+
+## Comprobación de updates en la app (`latest.json`)
+DupliManager incluye una comprobación de actualizaciones al abrir el panel:
+- consulta una URL `latest.json`
+- compara con la versión runtime
+- muestra aviso en footer si hay una versión nueva
+
+Endpoint de diagnóstico:
+- `GET /api/system/update-check`
 
 ## Scripts de release (local vs GitHub)
 ### `scripts/release.ps1` (interactivo, recomendado)
@@ -158,6 +227,7 @@ Uso:
 - Generar `SHA256SUMS.txt`
 - Generar `release-notes.md` desde commits (desde el último tag)
 - (Opcional) actualizar `CHANGELOG.md`
+- Sincronizar `server_py/version.py` con la versión que se va a empaquetar
 
 Ejemplo:
 ```powershell
@@ -175,6 +245,7 @@ Uso:
 - Empujar `main`
 - Crear tag `vX.Y.Z`
 - Empujar el tag para disparar el workflow de GitHub Actions
+- Sincronizar y commitear `server_py/version.py` automáticamente si no coincide con la versión del release
 
 Ejemplo (publicación normal):
 ```powershell
@@ -200,6 +271,7 @@ Notas:
 - `SHA256SUMS.txt`
 - `release-metadata.json`
 - `release-notes.md`
+- `latest.json` (canal de updates, publicado en Wasabi para cliente)
 
 ## Diferencia cliente vs soporte (importante)
 - **Cliente**
@@ -242,9 +314,10 @@ Notas:
 5. Healthcheck post-instalación automatizado (comprobar `/api/health`).
 
 ## Notas operativas
-- La build cliente usa `web/` y `docs.html` como datos incluidos.
+- La build cliente usa `web/`, `docs.html` y la carpeta `docs/` (incluyendo `docs/user-manual.md`) como datos incluidos.
 - La build cliente incluye `web/index.html`, `web/css/` y `web/js/` de forma explícita (evita arrastrar carpetas ocultas no deseadas como `web/.duplicacy`).
 - Si `bin\duplicacy.exe` no existe, el script de build avisa y sigue.
 - En runtime (Windows), DupliManager intentará **descargar automáticamente** `duplicacy.exe` desde GitHub Releases al primer uso (backup/restore/listados remotos) si no encuentra el binario configurado.
 - Requisito para auto-descarga runtime: salida HTTPS a `github.com` / `api.github.com`.
+- La UI muestra la versión runtime desde `server_py/version.py`; los scripts de release sincronizan este archivo para evitar descuadres entre la versión instalada y el tag publicado.
 - La eliminación del archivo `server.log` del repo forma parte de la higiene pre-build (artefacto de runtime).

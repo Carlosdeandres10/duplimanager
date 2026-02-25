@@ -42,8 +42,14 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
 
 5. Panel web
 - Activar contraseña del panel.
+- Importante UX: la contraseña del panel se guarda con el boton especifico `Guardar contraseña del panel` (no con `Guardar Configuración`).
 - Configurar `cookieSecureMode = auto` (o `always` si siempre hay HTTPS).
 - Ajustar TTL de sesion segun politica del cliente.
+- Verificar la version mostrada en el footer tras upgrades.
+- Verificar el enlace `Manual de usuario` desde el footer.
+- Si se usa el aviso de updates:
+  - comprobar acceso a `latest.json`
+  - confirmar que la URL de updates queda correcta
 - Revisar `Configuración -> Rutas del sistema (diagnóstico)` para confirmar:
   - `dataDir`, `configDir`, `logsDir`
   - ruta de `duplicacy.exe`
@@ -60,6 +66,7 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
 - Documentar procedimiento de recuperacion local de acceso.
 - Backup de `config/duplimanager.db` y carpeta `logs/` segun politica.
 - La herramienta `server_py.tools.maintenance` se considera tooling interno de soporte (no distribuir al cliente final).
+- Si se usa canal de updates en Wasabi, aplicar policy pública solo al prefijo de releases (no al bucket de backups de clientes).
 
 ## Checklist de validacion post-instalacion
 1. Abrir panel localmente -> OK
@@ -69,6 +76,7 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
 5. Crear/probar storage Wasabi -> OK
 6. Backup y restore MVP -> OK (sin romper flujo Duplicacy)
 7. Reiniciar servidor Windows (o servicio) y verificar que DupliManager vuelve a levantar solo -> OK
+8. Comprobar `GET /api/system/update-check` -> sin error (si updates habilitado) -> OK
 
 ## Notas
 - Cambios de `host` y `port` requieren reinicio del servicio.
