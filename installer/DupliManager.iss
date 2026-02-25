@@ -66,6 +66,9 @@ Name: "{app}\bin"
 [Files]
 ; Copiar build onedir completo.
 Source: "{#DistFolder}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; Excludes: "server.log"
+; Manuales locales (HTML + docs de referencia)
+Source: "..\docs.html"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: recursesubdirs createallsubdirs ignoreversion
 #if BuildMode != "support"
 ; WinSW (Windows Service Wrapper) y XML de servicio para modo cliente.
 Source: "vendor\winsw\WinSW-x64.exe"; DestDir: "{app}"; DestName: "{#ServiceExeName}"; Flags: ignoreversion
@@ -75,11 +78,13 @@ Source: "winsw\DupliManagerService.xml"; DestDir: "{app}"; DestName: "{#ServiceX
 [Icons]
 #if BuildMode != "support"
 Name: "{group}\Abrir panel DupliManager"; Filename: "http://127.0.0.1:8500"
+Name: "{group}\Manual de usuario"; Filename: "{app}\docs.html"
 Name: "{group}\DupliManager (modo consola)"; Filename: "{app}\{#AppExeName}"
 Name: "{group}\Abrir carpeta de instalación"; Filename: "{app}"
 Name: "{autodesktop}\DupliManager"; Filename: "http://127.0.0.1:8500"; Tasks: desktopicon
 #else
 Name: "{group}\CLI mantenimiento (Soporte)"; Filename: "{app}\{#AppExeName}"
+Name: "{group}\Manual de usuario"; Filename: "{app}\docs.html"
 Name: "{group}\Abrir carpeta de instalación"; Filename: "{app}"
 #endif
 
