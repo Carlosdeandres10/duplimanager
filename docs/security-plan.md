@@ -240,6 +240,10 @@ Nota:
   - `GET /api/system/paths`
 - Nueva tarjeta en el panel (`Configuración`) para ver rutas reales del sistema (solo lectura).
 
+### UX operativa (binario Duplicacy)
+- Si `duplicacy.exe` no existe en la ruta configurada, el servicio intenta descargarlo automáticamente en Windows (GitHub Releases, x64) al primer uso de operaciones Duplicacy.
+- Si falla (sin salida a Internet / bloqueo corporativo), devuelve error claro indicando cómo configurarlo manualmente en `Ajustes`.
+
 ### Pendiente (siguiente bloque)
 - Definir cuenta de servicio (LocalSystem vs usuario dedicado) segun tipo de cliente
 - Script de post-instalacion / healthcheck (`/api/health`)

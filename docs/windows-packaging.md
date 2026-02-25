@@ -187,5 +187,7 @@ Qué hace:
 ## Notas operativas
 - La build cliente usa `web/` y `docs.html` como datos incluidos.
 - La build cliente incluye `web/index.html`, `web/css/` y `web/js/` de forma explícita (evita arrastrar carpetas ocultas no deseadas como `web/.duplicacy`).
-- Si `bin\duplicacy.exe` no existe, el script avisa y sigue; la instalación deberá resolver ese binario por otro medio.
+- Si `bin\duplicacy.exe` no existe, el script de build avisa y sigue.
+- En runtime (Windows), DupliManager intentará **descargar automáticamente** `duplicacy.exe` desde GitHub Releases al primer uso (backup/restore/listados remotos) si no encuentra el binario configurado.
+- Requisito para auto-descarga runtime: salida HTTPS a `github.com` / `api.github.com`.
 - La eliminación del archivo `server.log` del repo forma parte de la higiene pre-build (artefacto de runtime).

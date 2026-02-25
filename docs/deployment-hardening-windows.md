@@ -29,6 +29,7 @@ Checklist operativo para instalaciones nuevas de DupliManager en servidores Wind
   - permisos de lectura en origenes de backup
   - permisos de escritura en destinos locales (si aplica)
   - acceso a rutas de red/SMB (si aplica)
+- Si se quiere usar auto-descarga de `duplicacy.exe`, permitir salida HTTPS a `github.com` / `api.github.com` (solo primer uso si falta el binario).
 - Minimizar permisos en disco a rutas de trabajo.
 
 4. Red

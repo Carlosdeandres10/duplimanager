@@ -3,25 +3,115 @@ DupliManager — Duplicacy CLI Service
 Wrapper around the duplicacy CLI binary using subprocess.
 """
 
+import json
 import os
 import subprocess
 import asyncio
 import re
+import threading
+import urllib.request
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any, List
 from server_py.utils.logger import get_logger
 from server_py.utils import config_store
+from server_py.utils.paths import DEFAULT_DUPLICACY_EXE
 
 logger = get_logger("DuplicacyCLI")
+
+DUPLICACY_GITHUB_RELEASE_LATEST_API = "https://api.github.com/repos/gilbertchen/duplicacy/releases/latest"
+DUPLICACY_DOWNLOAD_USER_AGENT = "DupliManager-AutoDownload"
 
 class DuplicacyService:
     def __init__(self):
         settings_data = config_store.settings.read()
-        self.binary_path = settings_data.get("duplicacy_path") or settings_data.get("duplicacyPath")
+        self.binary_path = settings_data.get("duplicacy_path") or settings_data.get("duplicacyPath") or str(DEFAULT_DUPLICACY_EXE)
+        self._download_lock = threading.Lock()
 
     def refresh_binary_path(self):
         settings_data = config_store.settings.read()
-        self.binary_path = settings_data.get("duplicacy_path") or settings_data.get("duplicacyPath")
+        self.binary_path = settings_data.get("duplicacy_path") or settings_data.get("duplicacyPath") or str(DEFAULT_DUPLICACY_EXE)
+
+    def _binary_path_obj(self) -> Path:
+        raw = str(self.binary_path or "").strip() or str(DEFAULT_DUPLICACY_EXE)
+        p = Path(raw).expanduser()
+        return p
+
+    def _resolve_duplicacy_download_url(self) -> str:
+        req = urllib.request.Request(
+            DUPLICACY_GITHUB_RELEASE_LATEST_API,
+            headers={
+                "User-Agent": DUPLICACY_DOWNLOAD_USER_AGENT,
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.load(resp)
+        assets = payload.get("assets") or []
+        for asset in assets:
+            name = str((asset or {}).get("name") or "")
+            if re.fullmatch(r"duplicacy_win_x64_.*\.exe", name, re.IGNORECASE):
+                url = str((asset or {}).get("browser_download_url") or "").strip()
+                if url:
+                    return url
+        raise RuntimeError("No se encontró el binario Windows x64 de Duplicacy en GitHub Releases.")
+
+    def _download_duplicacy_if_missing_sync(self, target_path: Path) -> bool:
+        target_path = Path(target_path)
+        if target_path.exists():
+            return True
+        if os.name != "nt":
+            return False
+
+        # Solo intentamos auto-descargar si la ruta objetivo es el binario estándar esperado.
+        if target_path.name.lower() != "duplicacy.exe":
+            logger.warning(
+                "No se puede auto-descargar Duplicacy: ruta configurada no estándar (%s).",
+                str(target_path),
+            )
+            return False
+
+        with self._download_lock:
+            if target_path.exists():
+                return True
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = target_path.with_suffix(".downloading")
+            url = self._resolve_duplicacy_download_url()
+            logger.warning("Duplicacy no encontrado. Descargando automáticamente desde GitHub Releases a %s", str(target_path))
+
+            req = urllib.request.Request(url, headers={"User-Agent": DUPLICACY_DOWNLOAD_USER_AGENT})
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                with open(tmp_path, "wb") as f:
+                    while True:
+                        chunk = resp.read(1024 * 128)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+
+            if not tmp_path.exists() or tmp_path.stat().st_size <= 0:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RuntimeError("La descarga automática de Duplicacy no produjo un archivo válido.")
+
+            tmp_path.replace(target_path)
+            logger.info("Duplicacy descargado automáticamente (%s bytes) en %s", target_path.stat().st_size, str(target_path))
+            return True
+
+    async def _ensure_binary_available(self) -> bool:
+        self.refresh_binary_path()
+        path = self._binary_path_obj()
+        if path.exists():
+            return True
+        try:
+            ok = await asyncio.to_thread(self._download_duplicacy_if_missing_sync, path)
+            if ok:
+                self.binary_path = str(path)
+                return True
+        except Exception as exc:
+            logger.error("No se pudo descargar Duplicacy automáticamente: %s", str(exc))
+        return path.exists()
 
     async def exec(
         self,
@@ -32,7 +122,16 @@ class DuplicacyService:
         on_process_start: Optional[Callable[[Any], None]] = None,
     ) -> Dict[str, Any]:
         """Ejecuta un comando duplicacy y captura la salida."""
-        self.refresh_binary_path()
+        binary_ok = await self._ensure_binary_available()
+        binary_path = str(self._binary_path_obj())
+        if not binary_ok:
+            detail = (
+                f"No se encontró duplicacy.exe en '{binary_path}' y la descarga automática falló. "
+                "Comprueba conexión a Internet/salida a github.com o configura manualmente la ruta en Ajustes."
+            )
+            logger.error(detail)
+            return {"code": -1, "stdout": "", "stderr": detail}
+
         logger.info(f"Ejecutando: duplicacy {' '.join(args)} en {cwd}")
 
         full_env = os.environ.copy()
@@ -43,7 +142,7 @@ class DuplicacyService:
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
             process = await asyncio.create_subprocess_exec(
-                self.binary_path,
+                binary_path,
                 *args,
                 cwd=cwd,
                 env=full_env,
