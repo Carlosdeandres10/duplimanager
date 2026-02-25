@@ -44,6 +44,7 @@ from server_py.core.helpers import (
 router = APIRouter(tags=["system"])
 logger = get_logger("SystemRouter")
 APP_VERSION = (os.getenv("DUPLIMANAGER_VERSION") or APP_CODE_VERSION).strip() or APP_CODE_VERSION
+DEFAULT_UPDATE_FEED_URL = "https://duplimanager.s3.eu-central-1.wasabisys.com/duplimanager/client/latest.json"
 
 LOG_LINE_RE = re.compile(r"^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s*(.*)$")
 
@@ -238,6 +239,14 @@ def _fetch_json_url(url: str, timeout_seconds: float = 4.0) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("latest.json debe ser un objeto JSON")
     return data
+
+
+def _get_effective_updates_config(raw_settings: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    s = raw_settings or {}
+    updates = dict(s.get("updates") or {})
+    enabled = bool(updates.get("enabled", True))
+    url = str(updates.get("url") or "").strip() or DEFAULT_UPDATE_FEED_URL
+    return {"enabled": enabled, "url": url}
 
 # ─── API ROUTES ───────────────────────────────────────────
 
@@ -556,7 +565,7 @@ async def get_system_paths():
 @router.get("/api/system/update-check")
 async def get_update_check():
     s = settings_config.read() or {}
-    updates = dict(s.get("updates") or {})
+    updates = _get_effective_updates_config(s)
     enabled = bool(updates.get("enabled", True))
     url = str(updates.get("url") or "").strip()
     base_payload = {
@@ -608,6 +617,7 @@ async def get_update_check():
 @router.get("/api/config/settings")
 async def get_settings():
     s = settings_config.read()
+    s["updates"] = _get_effective_updates_config(s)
     if "duplicacyPath" not in s and "duplicacy_path" in s:
         s["duplicacyPath"] = s.get("duplicacy_path")
     # Descifrar secretos que la UI necesita mostrar/reutilizar
