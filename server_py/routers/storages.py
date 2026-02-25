@@ -7,6 +7,7 @@ from datetime import datetime
 from server_py.utils.config_store import storages as storages_config
 from server_py.models.schemas import StorageCreate, StorageUpdate, StorageRestoreRequest, WasabiSnapshotDetectRequest
 from server_py.services.duplicacy import service as duplicacy_service
+from server_py.utils.secret_crypto import protect_secrets_deep, reveal_secret
 from server_py.core.helpers import (
     sanitize_storage, list_all_storages_for_ui, test_wasabi_head_bucket, 
     validate_wasabi_duplicacy_storage_access_if_initialized, build_wasabi_storage_url,
@@ -93,6 +94,7 @@ async def create_storage(req: StorageCreate):
         }
         if dup_pwd:
             record["_secrets"]["duplicacyPassword"] = req.duplicacyPassword
+        record["_secrets"] = protect_secrets_deep(record.get("_secrets") or {})
 
     # Deduplicado simple por URL + tipo (actualiza alias/secretos si ya existe)
     existing = next((s for s in storages if s.get("type") == record.get("type") and (s.get("url") or s.get("localPath")) == (record.get("url") or record.get("localPath"))), None)
@@ -100,6 +102,7 @@ async def create_storage(req: StorageCreate):
         existing["name"] = record["name"]
         existing["label"] = record["label"]
         if record.get("_secrets"):
+            record["_secrets"] = protect_secrets_deep(record.get("_secrets") or {})
             existing.setdefault("_secrets", {}).update(record["_secrets"])
         if storage_type == "wasabi":
             for key in ("endpoint", "region", "bucket", "directory", "url"):
@@ -155,8 +158,8 @@ async def update_storage(storage_id: str, req: StorageUpdate):
     bucket = (req.bucket or "").strip() if req.bucket is not None else (target.get("bucket") or "")
     directory = (req.directory or "").strip() if req.directory is not None else (target.get("directory") or "")
     secrets = target.setdefault("_secrets", {})
-    access_id = (req.accessId or "").strip() if req.accessId is not None and (req.accessId or "").strip() else (secrets.get("accessId") or "")
-    access_key = (req.accessKey or "").strip() if req.accessKey is not None and (req.accessKey or "").strip() else (secrets.get("accessKey") or "")
+    access_id = (req.accessId or "").strip() if req.accessId is not None and (req.accessId or "").strip() else (reveal_secret(secrets.get("accessId")) or "")
+    access_key = (req.accessKey or "").strip() if req.accessKey is not None and (req.accessKey or "").strip() else (reveal_secret(secrets.get("accessKey")) or "")
 
     if not all([endpoint, region, bucket, access_id, access_key]):
         raise HTTPException(status_code=400, detail="Faltan datos de Wasabi (endpoint, región, bucket o credenciales)")
@@ -169,7 +172,7 @@ async def update_storage(storage_id: str, req: StorageUpdate):
     elif req.duplicacyPassword is not None and (req.duplicacyPassword or "").strip():
         effective_dup_pwd = req.duplicacyPassword
     else:
-        effective_dup_pwd = (secrets.get("duplicacyPassword") or None)
+        effective_dup_pwd = (reveal_secret(secrets.get("duplicacyPassword")) or None)
     validation = await validate_wasabi_duplicacy_storage_access_if_initialized(
         endpoint=endpoint,
         region=region,
@@ -194,6 +197,7 @@ async def update_storage(storage_id: str, req: StorageUpdate):
             secrets["duplicacyPassword"] = req.duplicacyPassword
     if req.clearDuplicacyPassword:
         secrets.pop("duplicacyPassword", None)
+    target["_secrets"] = protect_secrets_deep(secrets)
 
     storages_config.write(storages)
     response = {"ok": True, "storage": sanitize_storage(target)}
@@ -226,9 +230,9 @@ async def detect_storage_snapshots(storage_id: str):
         region=storage.get("region") or "",
         bucket=storage.get("bucket") or "",
         directory=storage.get("directory") or "",
-        accessId=((storage.get("_secrets") or {}).get("accessId") or ""),
-        accessKey=((storage.get("_secrets") or {}).get("accessKey") or ""),
-        password=((storage.get("_secrets") or {}).get("duplicacyPassword") or None),
+        accessId=(reveal_secret((storage.get("_secrets") or {}).get("accessId")) or ""),
+        accessKey=(reveal_secret((storage.get("_secrets") or {}).get("accessKey")) or ""),
+        password=(reveal_secret((storage.get("_secrets") or {}).get("duplicacyPassword")) or None),
     )
     return await do_detect_wasabi_snapshots(req)
 
@@ -241,7 +245,7 @@ async def list_storage_snapshot_revisions(storage_id: str, snapshot_id: str, pas
     snapshot_id = (snapshot_id or "").strip()
     if not snapshot_id:
         raise HTTPException(status_code=400, detail="snapshot_id es obligatorio")
-    effective_password = (password or "").strip() or ((storage.get("_secrets") or {}).get("duplicacyPassword") or None)
+    effective_password = (password or "").strip() or (reveal_secret((storage.get("_secrets") or {}).get("duplicacyPassword")) or None)
     cache_key = _remote_cache_key(
         "storage-revisions",
         storage_id,
@@ -273,7 +277,7 @@ async def list_storage_snapshot_files(storage_id: str, snapshot_id: str, revisio
     snapshot_id = (snapshot_id or "").strip()
     if not snapshot_id:
         raise HTTPException(status_code=400, detail="snapshot_id es obligatorio")
-    effective_password = (password or "").strip() or ((storage.get("_secrets") or {}).get("duplicacyPassword") or None)
+    effective_password = (password or "").strip() or (reveal_secret((storage.get("_secrets") or {}).get("duplicacyPassword")) or None)
     cache_key = _remote_cache_key(
         "storage-files",
         storage_id,
@@ -312,7 +316,7 @@ async def restore_from_storage(storage_id: str, req: StorageRestoreRequest):
     if not restore_path:
         raise HTTPException(status_code=400, detail="Para restaurar desde un storage sin backup local debes indicar una ruta de restauración")
 
-    effective_password = (req.password or "").strip() or ((storage.get("_secrets") or {}).get("duplicacyPassword") or None)
+    effective_password = (req.password or "").strip() or (reveal_secret((storage.get("_secrets") or {}).get("duplicacyPassword")) or None)
     started_monotonic = time.monotonic()
     logger.info(
         "[Restore] Inicio storage=%s snapshotId=%s revision=%s destino=%s overwrite=%s threads=%s seleccion=%s",

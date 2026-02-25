@@ -9,10 +9,12 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from server_py.utils.config_store import settings as settings_config
-from server_py.utils.logger import get_log_files, read_log_file
+from server_py.utils.logger import get_log_files, read_log_file, get_logger
+from server_py.utils.secret_crypto import protect_secret, reveal_secret
 from server_py.models.schemas import WasabiConnectionTest, WasabiSnapshotDetectRequest
 from server_py.services.duplicacy import service as duplicacy_service
 from server_py.services.notifications import test_backup_notifications
+from server_py.services.secrets_migration import migrate_all_secrets_in_config
 from server_py.services.panel_auth import (
     get_public_status as get_panel_auth_public_status,
     verify_panel_password,
@@ -20,6 +22,11 @@ from server_py.services.panel_auth import (
     revoke_session,
     is_session_valid,
     save_panel_access,
+    get_session_ttl_seconds,
+    should_use_secure_cookie,
+    get_login_lockout_status,
+    register_login_failure,
+    clear_login_failures,
     SESSION_COOKIE_NAME,
 )
 from server_py.core.helpers import (
@@ -30,8 +37,44 @@ from server_py.core.helpers import (
 
 
 router = APIRouter(tags=["system"])
+logger = get_logger("SystemRouter")
 
 LOG_LINE_RE = re.compile(r"^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s*(.*)$")
+
+
+def _client_ip(request: Optional[Request]) -> str:
+    try:
+        return (((request.client if request else None) and request.client.host) or "unknown").strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _auth_audit(request: Optional[Request], event: str, *, level: str = "info", **fields: Any) -> None:
+    safe_fields: Dict[str, Any] = {}
+    for key, value in (fields or {}).items():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            safe_fields[key] = value.replace("\n", " ").replace("\r", " ").strip()
+        else:
+            safe_fields[key] = value
+    safe_fields["ip"] = _client_ip(request)
+    try:
+        ua = str((request.headers.get("user-agent") if request else "") or "").strip()
+    except Exception:
+        ua = ""
+    if ua:
+        safe_fields["ua"] = (ua[:180] + "…") if len(ua) > 180 else ua
+    payload = " ".join(f"{k}={safe_fields[k]}" for k in sorted(safe_fields.keys()))
+    msg = f"[AuthAudit] event={event}"
+    if payload:
+        msg += f" {payload}"
+    if level == "warning":
+        logger.warning(msg)
+    elif level == "error":
+        logger.error(msg)
+    else:
+        logger.info(msg)
 
 
 def _parse_log_datetime(value: str) -> Optional[datetime]:
@@ -310,63 +353,6 @@ async def test_notification_channels(request: Request):
         "backupLog": "Prueba manual de canales globales desde Configuración.",
     }
 
-
-@router.get("/api/auth/status")
-async def auth_status(request: Request):
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    status = get_panel_auth_public_status()
-    status["authenticated"] = bool(status.get("requiresAuth")) and is_session_valid(token)
-    if not status.get("requiresAuth"):
-        status["authenticated"] = True
-    return {"ok": True, "auth": status}
-
-
-@router.post("/api/auth/login")
-async def auth_login(request: Request, response: Response):
-    body = await request.json()
-    password = str((body or {}).get("password") or "")
-    status = get_panel_auth_public_status()
-    if status.get("requiresAuth"):
-        if not verify_panel_password(password):
-            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
-    token = create_session()
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        max_age=12 * 60 * 60,
-        path="/",
-    )
-    status["authenticated"] = True
-    return {"ok": True, "auth": status}
-
-
-@router.post("/api/auth/logout")
-async def auth_logout(request: Request, response: Response):
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    revoke_session(token)
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
-    return {"ok": True}
-
-
-@router.post("/api/auth/panel-access")
-async def save_auth_panel_access(request: Request):
-    body = await request.json()
-    enabled = bool((body or {}).get("enabled", False))
-    current_password = (body or {}).get("currentPassword")
-    new_password = (body or {}).get("newPassword")
-    try:
-        status = save_panel_access(
-            enabled=enabled,
-            current_password=current_password,
-            new_password=new_password,
-        )
-        return {"ok": True, "auth": status}
-    except ValueError as ex:
-        raise HTTPException(status_code=400, detail=str(ex))
-
     repo_notifications: Dict[str, Any] = {"healthchecks": {}, "email": {}}
     if test_keyword:
         repo_notifications["healthchecks"]["successKeyword"] = test_keyword
@@ -385,6 +371,134 @@ async def save_auth_panel_access(request: Request):
         raise HTTPException(status_code=400, detail=result.get("detail") or "Falló la prueba de notificación")
     return result
 
+
+@router.get("/api/auth/status")
+async def auth_status(request: Request):
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    status = get_panel_auth_public_status()
+    status["authenticated"] = bool(status.get("requiresAuth")) and is_session_valid(token)
+    if not status.get("requiresAuth"):
+        status["authenticated"] = True
+    return {"ok": True, "auth": status}
+
+
+@router.post("/api/auth/login")
+async def auth_login(request: Request, response: Response):
+    body = await request.json()
+    password = str((body or {}).get("password") or "")
+    status = get_panel_auth_public_status()
+    client_key = ((request.client and request.client.host) or "unknown").strip() or "unknown"
+    if status.get("requiresAuth"):
+        lockout = get_login_lockout_status(client_key)
+        if not lockout.get("allowed"):
+            retry_after = int(lockout.get("retryAfterSeconds") or 60)
+            _auth_audit(request, "login_blocked", level="warning", retryAfterSeconds=retry_after)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Demasiados intentos fallidos. Intenta de nuevo en {retry_after}s.",
+                headers={"Retry-After": str(retry_after)},
+            )
+        if not verify_panel_password(password):
+            failure = register_login_failure(client_key)
+            if failure.get("blocked"):
+                retry_after = int(failure.get("retryAfterSeconds") or 60)
+                _auth_audit(
+                    request,
+                    "login_blocked",
+                    level="warning",
+                    retryAfterSeconds=retry_after,
+                    failedCount=int(failure.get("count") or 0),
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Demasiados intentos fallidos. Intenta de nuevo en {retry_after}s.",
+                    headers={"Retry-After": str(retry_after)},
+                )
+            _auth_audit(
+                request,
+                "login_failed",
+                level="warning",
+                failedCount=int(failure.get("count") or 0),
+            )
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+        clear_login_failures(client_key)
+    token = create_session()
+    session_ttl = get_session_ttl_seconds()
+    secure_cookie = should_use_secure_cookie(
+        request_scheme=(request.url.scheme if request.url else None),
+        x_forwarded_proto=request.headers.get("x-forwarded-proto"),
+    )
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=secure_cookie,
+        max_age=session_ttl,
+        path="/",
+    )
+    status["authenticated"] = True
+    _auth_audit(
+        request,
+        "login_success",
+        requiresAuth=bool(status.get("requiresAuth")),
+        sessionTtlSeconds=session_ttl,
+        secureCookie=bool(secure_cookie),
+    )
+    return {"ok": True, "auth": status}
+
+
+@router.post("/api/auth/logout")
+async def auth_logout(request: Request, response: Response):
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    revoke_session(token)
+    secure_cookie = should_use_secure_cookie(
+        request_scheme=(request.url.scheme if request.url else None),
+        x_forwarded_proto=request.headers.get("x-forwarded-proto"),
+    )
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/", samesite="lax", secure=secure_cookie)
+    _auth_audit(request, "logout", secureCookie=bool(secure_cookie), hadSessionCookie=bool(token))
+    return {"ok": True}
+
+
+@router.post("/api/auth/panel-access")
+async def save_auth_panel_access(request: Request):
+    body = await request.json()
+    enabled = bool((body or {}).get("enabled", False))
+    current_password = (body or {}).get("currentPassword")
+    new_password = (body or {}).get("newPassword")
+    try:
+        status = save_panel_access(
+            enabled=enabled,
+            current_password=current_password,
+            new_password=new_password,
+        )
+        _auth_audit(
+            request,
+            "panel_access_updated",
+            enabled=bool(status.get("enabled")),
+            configured=bool(status.get("configured")),
+            requiresAuth=bool(status.get("requiresAuth")),
+        )
+        return {"ok": True, "auth": status}
+    except ValueError as ex:
+        _auth_audit(request, "panel_access_update_failed", level="warning", reason=str(ex))
+        raise HTTPException(status_code=400, detail=str(ex))
+
+
+@router.post("/api/system/migrate-secrets")
+async def migrate_secrets(request: Request):
+    result = migrate_all_secrets_in_config()
+    _auth_audit(
+        request,
+        "secrets_migration_executed",
+        changed=bool(result.get("changed")),
+        settingsSecretsMigrated=int(result.get("settingsSecretsMigrated") or 0),
+        storagesRecordsMigrated=int(result.get("storagesRecordsMigrated") or 0),
+        repositoriesRecordsMigrated=int(result.get("repositoriesRecordsMigrated") or 0),
+    )
+    return result
+
 # --- Config & Logs ---
 
 @router.get("/api/config/settings")
@@ -392,6 +506,17 @@ async def get_settings():
     s = settings_config.read()
     if "duplicacyPath" not in s and "duplicacy_path" in s:
         s["duplicacyPath"] = s.get("duplicacy_path")
+    # Descifrar secretos que la UI necesita mostrar/reutilizar
+    try:
+        n = dict(s.get("notifications") or {})
+        mail = dict(n.get("email") or {})
+        if "smtpPassword" in mail:
+            mail["smtpPassword"] = reveal_secret(mail.get("smtpPassword")) or ""
+        if mail:
+            n["email"] = mail
+            s["notifications"] = n
+    except Exception:
+        pass
     # No exponer el blob DPAPI del panel al frontend
     pa = dict(s.get("panelAccess") or {})
     if pa:
@@ -410,10 +535,20 @@ async def update_settings(req: Request):
     current = settings_config.read()
     # La contraseña del panel se gestiona por endpoint dedicado
     if isinstance(data.get("panelAccess"), dict):
-        data["panelAccess"] = {
+        incoming_panel_access = {
             k: v for k, v in data["panelAccess"].items()
             if k not in {"passwordBlob", "configured", "requiresAuth", "authenticated"}
         }
+        merged_panel_access = dict(current.get("panelAccess") or {})
+        merged_panel_access.update(incoming_panel_access)
+        data["panelAccess"] = merged_panel_access
+    if isinstance(data.get("notifications"), dict):
+        n = dict(data.get("notifications") or {})
+        mail = dict(n.get("email") or {})
+        if "smtpPassword" in mail:
+            mail["smtpPassword"] = protect_secret(mail.get("smtpPassword") or "") or ""
+            n["email"] = mail
+            data["notifications"] = n
     current.update(data)
     settings_config.write(current)
     return {"ok": True, "settings": current}

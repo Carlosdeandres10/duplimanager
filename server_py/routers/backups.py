@@ -14,6 +14,7 @@ from server_py.utils.config_store import repositories as repositories_config
 from server_py.models.schemas import RepoCreate, RepoUpdate, BackupStart, BackupCancelRequest, RepoNotificationTestRequest
 from server_py.services.duplicacy import service as duplicacy_service
 from server_py.services.notifications import notify_backup_success, test_backup_notifications
+from server_py.utils.secret_crypto import protect_secrets_deep
 from server_py.core.helpers import (
     sanitize_repo, get_storage_by_id, build_destination_from_storage_ref, 
     resolve_repo_destination, get_storage_env, get_primary_storage, 
@@ -244,6 +245,7 @@ async def create_repo(repo: RepoCreate):
         "notifications": normalized_notifications,
     }
     if secrets:
+        secrets = protect_secrets_deep(secrets)
         new_repo["_secrets"] = secrets
     repos_data.append(new_repo)
     repositories_config.write(repos_data)

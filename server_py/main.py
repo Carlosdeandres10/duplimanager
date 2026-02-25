@@ -93,5 +93,6 @@ import json
 if __name__ == "__main__":
     settings_data = config_store.settings.read()
     port = settings_data.get("port", 8500)
-    logger.info(f"🚀 DupliManager (Python) iniciando en http://localhost:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    host = str(settings_data.get("host") or "127.0.0.1").strip() or "127.0.0.1"
+    logger.info(f"🚀 DupliManager (Python) iniciando en http://{host}:{port}")
+    uvicorn.run(app, host=host, port=port)

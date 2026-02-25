@@ -450,6 +450,17 @@
                   >
                 </div>
                 <div class="form-group">
+                  <label class="form-label">Host del Servidor (bind)</label>
+                  <input
+                    type="text"
+                    id="setting-host"
+                    class="form-input"
+                    value="127.0.0.1"
+                    placeholder="127.0.0.1"
+                  />
+                  <span class="form-hint">Recomendado: <code>127.0.0.1</code>. Cambiar requiere reiniciar el servicio.</span>
+                </div>
+                <div class="form-group">
                   <label class="form-label">Puerto del Servidor</label>
                   <input
                     type="number"
@@ -498,6 +509,27 @@
                     <input type="password" id="setting-panel-auth-confirm" class="form-input" placeholder="Repite la contraseña" />
                   </div>
                 </div>
+                <div class="form-group" style="display:grid; grid-template-columns: 1fr 220px; gap:12px;">
+                  <div>
+                    <label class="form-label">Cookies seguras del panel</label>
+                    <select id="setting-panel-cookie-secure-mode" class="form-select">
+                      <option value="auto">Auto (HTTPS o proxy HTTPS)</option>
+                      <option value="always">Siempre (Secure=true)</option>
+                      <option value="never">Nunca (solo HTTP local)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label">Expiración sesión</label>
+                    <select id="setting-panel-session-ttl-hours" class="form-select">
+                      <option value="1">1 hora</option>
+                      <option value="4">4 horas</option>
+                      <option value="12">12 horas</option>
+                      <option value="24">1 día</option>
+                      <option value="72">3 días</option>
+                      <option value="168">7 días</option>
+                    </select>
+                  </div>
+                </div>
                 <div class="form-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                   <button type="button" class="btn btn-ghost btn-sm" id="btn-save-panel-auth" onclick="savePanelAccessSettings()">
                     🔐 Guardar contraseña del panel
@@ -505,6 +537,7 @@
                   <span id="setting-panel-auth-status" class="form-hint">No hay contraseña configurada para el panel.</span>
                 </div>
                 <span class="form-hint">La contraseña se guarda cifrada con Windows (DPAPI) en este equipo.</span>
+                <span class="form-hint">Los ajustes de cookie segura y expiración de sesión se guardan con el botón <b>Guardar Configuración</b>.</span>
               </div>
 
               <div class="settings-section">
@@ -597,6 +630,18 @@
                     🧪 Probar Email
                   </button>
                   <span id="setting-email-test-status" class="form-hint">Prueba solo el envío por SMTP con la configuración global.</span>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>🛡️ Mantenimiento de secretos</h3>
+                <div class="form-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-migrate-secrets" onclick="runSecretsMigration()">
+                    🔐 Migrar secretos legacy a DPAPI
+                  </button>
+                  <span id="setting-secrets-migration-status" class="form-hint">
+                    Reescribe credenciales antiguas en claro al formato protegido (Windows DPAPI).
+                  </span>
                 </div>
               </div>
 

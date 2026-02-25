@@ -27,6 +27,10 @@ logger = get_logger("PanelAuth")
 SESSION_COOKIE_NAME = "duplimanager_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
 _sessions: Dict[str, float] = {}
+LOGIN_MAX_FAILED_ATTEMPTS = 5
+LOGIN_FAIL_WINDOW_SECONDS = 10 * 60
+LOGIN_LOCKOUT_SECONDS = 10 * 60
+_login_failures: Dict[str, Dict[str, float]] = {}
 
 
 class _DATA_BLOB(ctypes.Structure):
@@ -119,10 +123,17 @@ def _pbkdf2_hash(password: str, salt: bytes) -> str:
 def _read_panel_access_cfg() -> Dict[str, Any]:
     s = settings_config.read() or {}
     pa = dict(s.get("panelAccess") or {})
+    raw_cookie_mode = pa.get("cookieSecureMode")
+    if raw_cookie_mode is None and "cookieSecure" in pa:
+        raw_cookie_mode = "always" if bool(pa.get("cookieSecure")) else "never"
+    cookie_secure_mode = str(raw_cookie_mode or "auto").strip().lower()
+    if cookie_secure_mode not in {"auto", "always", "never"}:
+        cookie_secure_mode = "auto"
     return {
         "enabled": bool(pa.get("enabled", False)),
         "passwordBlob": str(pa.get("passwordBlob") or "").strip(),
         "sessionTtlSeconds": int(pa.get("sessionTtlSeconds") or SESSION_TTL_SECONDS),
+        "cookieSecureMode": cookie_secure_mode,
     }
 
 
@@ -175,7 +186,39 @@ def get_public_status() -> Dict[str, Any]:
         "enabled": bool(cfg.get("enabled")),
         "configured": bool(cfg.get("passwordBlob")),
         "requiresAuth": bool(cfg.get("enabled")) and bool(cfg.get("passwordBlob")),
+        "cookieSecureMode": str(cfg.get("cookieSecureMode") or "auto"),
+        "sessionTtlSeconds": get_session_ttl_seconds(),
     }
+
+
+def get_session_ttl_seconds() -> int:
+    cfg = _read_panel_access_cfg()
+    try:
+        ttl = int(cfg.get("sessionTtlSeconds") or SESSION_TTL_SECONDS)
+    except Exception:
+        ttl = SESSION_TTL_SECONDS
+    # Rango razonable: 5 min a 7 dias
+    return max(300, min(7 * 24 * 60 * 60, ttl))
+
+
+def should_use_secure_cookie(*, request_scheme: Optional[str], x_forwarded_proto: Optional[str]) -> bool:
+    cfg = _read_panel_access_cfg()
+    mode = str(cfg.get("cookieSecureMode") or "auto").strip().lower()
+    if mode == "always":
+        return True
+    if mode == "never":
+        return False
+
+    scheme = str(request_scheme or "").strip().lower()
+    if scheme == "https":
+        return True
+
+    forwarded = str(x_forwarded_proto or "").strip().lower()
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first == "https":
+            return True
+    return False
 
 
 def verify_panel_password(password: str) -> bool:
@@ -236,10 +279,80 @@ def _cleanup_sessions() -> None:
         _sessions.pop(k, None)
 
 
+def _cleanup_login_failures() -> None:
+    now = time.time()
+    stale_keys = []
+    for key, rec in _login_failures.items():
+        blocked_until = float(rec.get("blockedUntil") or 0)
+        first_failed_at = float(rec.get("firstFailedAt") or 0)
+        count = int(rec.get("count") or 0)
+        expired_window = first_failed_at and (now - first_failed_at) > LOGIN_FAIL_WINDOW_SECONDS
+        no_active_block = blocked_until <= now
+        if (count <= 0 and no_active_block) or (expired_window and no_active_block):
+            stale_keys.append(key)
+    for key in stale_keys:
+        _login_failures.pop(key, None)
+
+
+def get_login_lockout_status(client_key: Optional[str]) -> Dict[str, Any]:
+    _cleanup_login_failures()
+    key = str(client_key or "unknown").strip() or "unknown"
+    now = time.time()
+    rec = _login_failures.get(key) or {}
+    blocked_until = float(rec.get("blockedUntil") or 0)
+    if blocked_until > now:
+        retry_after = max(1, int(blocked_until - now))
+        return {"allowed": False, "retryAfterSeconds": retry_after}
+    return {"allowed": True, "retryAfterSeconds": 0}
+
+
+def register_login_failure(client_key: Optional[str]) -> Dict[str, Any]:
+    _cleanup_login_failures()
+    key = str(client_key or "unknown").strip() or "unknown"
+    now = time.time()
+    rec = dict(_login_failures.get(key) or {})
+    first_failed_at = float(rec.get("firstFailedAt") or 0)
+    count = int(rec.get("count") or 0)
+    blocked_until = float(rec.get("blockedUntil") or 0)
+
+    if blocked_until > now:
+        return {
+            "blocked": True,
+            "retryAfterSeconds": max(1, int(blocked_until - now)),
+            "count": count,
+        }
+
+    if not first_failed_at or (now - first_failed_at) > LOGIN_FAIL_WINDOW_SECONDS:
+        first_failed_at = now
+        count = 0
+
+    count += 1
+    blocked = count >= LOGIN_MAX_FAILED_ATTEMPTS
+    if blocked:
+        blocked_until = now + LOGIN_LOCKOUT_SECONDS
+
+    _login_failures[key] = {
+        "firstFailedAt": first_failed_at,
+        "count": float(count),
+        "blockedUntil": float(blocked_until if blocked else 0),
+    }
+    return {
+        "blocked": blocked,
+        "retryAfterSeconds": (LOGIN_LOCKOUT_SECONDS if blocked else 0),
+        "count": count,
+    }
+
+
+def clear_login_failures(client_key: Optional[str]) -> None:
+    key = str(client_key or "unknown").strip() or "unknown"
+    _login_failures.pop(key, None)
+
+
 def create_session() -> str:
     _cleanup_sessions()
+    ttl = get_session_ttl_seconds()
     token = secrets.token_urlsafe(32)
-    _sessions[token] = time.time() + SESSION_TTL_SECONDS
+    _sessions[token] = time.time() + ttl
     return token
 
 
@@ -259,6 +372,6 @@ def is_session_valid(token: Optional[str]) -> bool:
         _sessions.pop(token, None)
         return False
     # Sliding session
-    _sessions[token] = time.time() + SESSION_TTL_SECONDS
+    _sessions[token] = time.time() + get_session_ttl_seconds()
     return True
 

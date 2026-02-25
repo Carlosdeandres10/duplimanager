@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 
 from server_py.utils.config_store import settings as settings_config
 from server_py.utils.logger import get_logger
+from server_py.utils.secret_crypto import reveal_secret
 
 logger = get_logger("Notifications")
 
@@ -46,7 +47,7 @@ def _normalize_notifications_cfg() -> Dict[str, Any]:
             "smtpHost": str(mail.get("smtpHost") or "").strip(),
             "smtpPort": int(mail.get("smtpPort") or 587),
             "smtpUsername": str(mail.get("smtpUsername") or "").strip(),
-            "smtpPassword": str(mail.get("smtpPassword") or "").strip(),
+            "smtpPassword": str(reveal_secret(mail.get("smtpPassword")) or "").strip(),
             "smtpStartTls": bool(mail.get("smtpStartTls", True)),
             "from": str(mail.get("from") or "").strip(),
             "to": str(mail.get("to") or "").strip(),

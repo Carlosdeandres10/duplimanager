@@ -19,6 +19,7 @@ DB_PATH = CONFIG_DIR / "duplimanager.db"
 # Valores por defecto
 DEFAULTS = {
     "settings.json": {
+        "host": "127.0.0.1",
         "port": 8500,
         "duplicacy_path": str(Path(__file__).parent.parent.parent / "bin" / "duplicacy.exe"),
         "language": "es",

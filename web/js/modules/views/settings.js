@@ -6,7 +6,9 @@ async function loadSettingsView() {
         const n = s.notifications || {};
         const hc = n.healthchecks || {};
         const mail = n.email || {};
+        const pa = s.panelAccess || {};
         document.getElementById('setting-duplicacy-path').value = s.duplicacy_path || s.duplicacyPath || '';
+        document.getElementById('setting-host').value = s.host || '127.0.0.1';
         document.getElementById('setting-port').value = s.port || 8500;
         document.getElementById('setting-language').value = s.language || 'es';
         document.getElementById('setting-theme').value = s.theme || currentTheme || 'dark';
@@ -28,8 +30,15 @@ async function loadSettingsView() {
         setValue('setting-email-to', mail.to || '');
         setValue('setting-email-subject-prefix', mail.subjectPrefix || '[DupliManager]');
         setChecked('setting-email-send-log', mail.sendLog !== false);
-        const pa = s.panelAccess || {};
         setChecked('setting-panel-auth-enabled', !!pa.enabled);
+        setValue('setting-panel-cookie-secure-mode', pa.cookieSecureMode || 'auto');
+        const ttlSeconds = parseInt(pa.sessionTtlSeconds || (12 * 60 * 60), 10) || (12 * 60 * 60);
+        const ttlHours = Math.max(1, Math.round(ttlSeconds / 3600));
+        const ttlEl = document.getElementById('setting-panel-session-ttl-hours');
+        if (ttlEl) {
+            const allowed = new Set(['1', '4', '12', '24', '72', '168']);
+            ttlEl.value = allowed.has(String(ttlHours)) ? String(ttlHours) : '12';
+        }
         const paStatus = document.getElementById('setting-panel-auth-status');
         if (paStatus) {
             paStatus.textContent = pa.configured
@@ -104,12 +113,20 @@ async function savePanelAccessSettings() {
 async function saveSettings(e) {
     e.preventDefault();
     try {
+        const hostValue = (document.getElementById('setting-host')?.value || '').trim() || '127.0.0.1';
+        const ttlHours = parseInt(document.getElementById('setting-panel-session-ttl-hours')?.value || '12', 10) || 12;
+        const ttlSeconds = Math.max(1, ttlHours) * 3600;
         await API.updateSettings({
+            host: hostValue,
             duplicacy_path: document.getElementById('setting-duplicacy-path').value,
             duplicacyPath: document.getElementById('setting-duplicacy-path').value,
             port: parseInt(document.getElementById('setting-port').value, 10),
             language: document.getElementById('setting-language').value,
             theme: document.getElementById('setting-theme').value,
+            panelAccess: {
+                cookieSecureMode: (document.getElementById('setting-panel-cookie-secure-mode')?.value || 'auto').trim() || 'auto',
+                sessionTtlSeconds: ttlSeconds,
+            },
             notifications: {
                 healthchecks: {
                     enabled: !!document.getElementById('setting-hc-enabled')?.checked,
@@ -133,7 +150,7 @@ async function saveSettings(e) {
             }
         });
         applyTheme(document.getElementById('setting-theme').value);
-        showToast('✅ Configuración guardada', 'success');
+        showToast('✅ Configuración guardada (reinicia el servicio si cambiaste host/puerto)', 'success');
     } catch (err) {
         showToast('❌ Error guardando', 'error');
     }
@@ -232,6 +249,45 @@ async function testGlobalEmailNotification() {
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = '🧪 Probar Email';
+        }
+    }
+}
+
+async function runSecretsMigration() {
+    const btn = document.getElementById('btn-migrate-secrets');
+    const status = document.getElementById('setting-secrets-migration-status');
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Migrando...';
+        }
+        if (status) {
+            status.textContent = 'Ejecutando migración de secretos...';
+            status.style.color = '';
+        }
+        const result = await API.migrateSecrets();
+        const msg = [
+            `settings=${result.settingsSecretsMigrated || 0}`,
+            `storages=${result.storagesRecordsMigrated || 0}`,
+            `repos=${result.repositoriesRecordsMigrated || 0}`
+        ].join(' · ');
+        if (status) {
+            status.textContent = result.changed
+                ? `Migración completada. Registros actualizados: ${msg}`
+                : `No había secretos legacy pendientes. (${msg})`;
+            status.style.color = 'var(--accent-green)';
+        }
+        showToast(`✅ Migración de secretos completada (${msg})`, 'success');
+    } catch (err) {
+        if (status) {
+            status.textContent = 'Error en migración de secretos: ' + (err.message || 'Error');
+            status.style.color = 'var(--accent-red)';
+        }
+        showToast('❌ Error migrando secretos', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔐 Migrar secretos legacy a DPAPI';
         }
     }
 }

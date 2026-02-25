@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import HTTPException
 from server_py.utils.logger import get_logger
 from server_py.utils import config_store
+from server_py.utils.secret_crypto import reveal_secret
 from server_py.models.schemas import RepoCreate, RepoUpdate
 
 logger = get_logger("StorageHelpers")
@@ -39,8 +40,8 @@ def sanitize_storage(storage: Dict[str, Any]) -> Dict[str, Any]:
         sanitized.pop(key, None)
     # Expose safe flags for UI
     secrets = storage.get("_secrets") or {}
-    sanitized["hasWasabiCredentials"] = bool(secrets.get("accessId") and secrets.get("accessKey"))
-    sanitized["hasDuplicacyPassword"] = bool(secrets.get("duplicacyPassword"))
+    sanitized["hasWasabiCredentials"] = bool(reveal_secret(secrets.get("accessId")) and reveal_secret(secrets.get("accessKey")))
+    sanitized["hasDuplicacyPassword"] = bool(reveal_secret(secrets.get("duplicacyPassword")))
     return sanitized
 
 def get_storage_by_id(storage_id: str) -> Optional[Dict[str, Any]]:
@@ -85,16 +86,16 @@ def get_storage_env(repo: Dict[str, Any], storage_name: Optional[str] = None) ->
 
     # Prioritizar secretos locales del repo
     secrets = (repo.get("_secrets") or {}).get(target_name, {})
-    access_id = secrets.get("accessId")
-    access_key = secrets.get("accessKey")
+    access_id = reveal_secret(secrets.get("accessId"))
+    access_key = reveal_secret(secrets.get("accessKey"))
 
     # Fallback a secretos centralizados si hay storageRefId
     if (not access_id or not access_key) and repo.get("storageRefId"):
         central_storage = get_storage_by_id(repo["storageRefId"])
         if central_storage:
             central_secrets = central_storage.get("_secrets") or {}
-            access_id = access_id or central_secrets.get("accessId")
-            access_key = access_key or central_secrets.get("accessKey")
+            access_id = access_id or reveal_secret(central_secrets.get("accessId"))
+            access_key = access_key or reveal_secret(central_secrets.get("accessKey"))
 
     if not access_id or not access_key:
         return {}
@@ -107,11 +108,11 @@ def get_repo_duplicacy_password(repo: Dict[str, Any], storage_name: Optional[str
     
     # 1. Buscar en secrets del repo (estructura anidada por alias)
     repo_secrets = repo.get("_secrets") or {}
-    pwd_nest = repo_secrets.get(target_name, {}).get(f"{target_name}_PASSWORD")
+    pwd_nest = reveal_secret(repo_secrets.get(target_name, {}).get(f"{target_name}_PASSWORD"))
     if pwd_nest: return pwd_nest
 
     # 2. Buscar en secrets del repo (estructura plana legacy)
-    pwd_flat = repo_secrets.get(f"{target_name}_PASSWORD") or repo_secrets.get("password")
+    pwd_flat = reveal_secret(repo_secrets.get(f"{target_name}_PASSWORD")) or reveal_secret(repo_secrets.get("password"))
     if pwd_flat: return pwd_flat
 
     # 3. Buscar en el storage vinculado centralmente
@@ -120,7 +121,7 @@ def get_repo_duplicacy_password(repo: Dict[str, Any], storage_name: Optional[str
         storage = get_storage_by_id(ref_id)
         if storage:
             storage_secrets = storage.get("_secrets") or {}
-            return storage_secrets.get("duplicacyPassword")
+            return reveal_secret(storage_secrets.get("duplicacyPassword"))
     
     return None
 
@@ -150,7 +151,7 @@ def get_storage_record_env(storage: Dict[str, Any], storage_name: str = "default
     if (storage.get("type") or "").lower() != "wasabi":
         return {}
     secrets = storage.get("_secrets") or {}
-    return build_wasabi_env(secrets.get("accessId", ""), secrets.get("accessKey", ""), storage_name)
+    return build_wasabi_env(reveal_secret(secrets.get("accessId")) or "", reveal_secret(secrets.get("accessKey")) or "", storage_name)
 
 def build_wasabi_storage_url(region: str, endpoint: str, bucket: str, directory: Optional[str]) -> str:
     clean_endpoint = endpoint.strip().replace("https://", "").replace("http://", "").strip("/")
@@ -321,8 +322,10 @@ def build_destination_from_storage_ref(storage: Dict[str, Any]) -> Dict[str, Any
     secrets = None
     if storage_type == "wasabi":
         sec = storage.get("_secrets") or {}
-        if sec.get("accessId") and sec.get("accessKey"):
-            secrets = {"default": {"accessId": sec["accessId"], "accessKey": sec["accessKey"]}}
+        access_id = reveal_secret(sec.get("accessId"))
+        access_key = reveal_secret(sec.get("accessKey"))
+        if access_id and access_key:
+            secrets = {"default": {"accessId": access_id, "accessKey": access_key}}
 
     return {
         "destinationType": storage_type,
@@ -332,7 +335,7 @@ def build_destination_from_storage_ref(storage: Dict[str, Any]) -> Dict[str, Any
         "secrets": secrets,
 
         "storageRefId": storage.get("id"),
-        "storageDuplicacyPassword": ((storage.get("_secrets") or {}).get("duplicacyPassword") or None),
+        "storageDuplicacyPassword": (reveal_secret((storage.get("_secrets") or {}).get("duplicacyPassword")) or None),
     }
 
 def list_all_storages_for_ui() -> List[Dict[str, Any]]:

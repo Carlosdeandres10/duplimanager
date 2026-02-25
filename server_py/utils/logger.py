@@ -5,11 +5,13 @@ Archivo de logging con rotación diaria y salida a consola.
 
 import os
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
 LOGS_DIR = Path(__file__).parent.parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
+SAFE_LOG_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.log$")
 
 
 def get_logger(name: str = "DupliManager") -> logging.Logger:
@@ -54,7 +56,17 @@ def get_log_files() -> list[str]:
 
 def read_log_file(filename: str) -> str | None:
     """Lee el contenido de un archivo de log."""
-    filepath = LOGS_DIR / filename
-    if not filepath.exists():
+    name = str(filename or "").strip()
+    if not SAFE_LOG_FILENAME_RE.fullmatch(name):
+        return None
+
+    logs_root = LOGS_DIR.resolve()
+    filepath = (LOGS_DIR / name).resolve()
+    try:
+        filepath.relative_to(logs_root)
+    except Exception:
+        return None
+
+    if filepath.parent != logs_root or not filepath.exists() or not filepath.is_file():
         return None
     return filepath.read_text(encoding="utf-8")

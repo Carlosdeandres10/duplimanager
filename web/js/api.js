@@ -153,6 +153,13 @@ const API = {
         });
     },
 
+    async migrateSecrets() {
+        return this._fetch('/system/migrate-secrets', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+    },
+
     // ─── AUTH ───────────────────────────────────────────
     async authStatus() {
         return this._fetch('/auth/status');
