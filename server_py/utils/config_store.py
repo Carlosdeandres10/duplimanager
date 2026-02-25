@@ -25,7 +25,7 @@ DEFAULTS = {
         "theme": "dark",
         "updates": {
             "enabled": True,
-            "url": "",
+            "url": "https://duplimanager.s3.eu-central-1.wasabisys.com/duplimanager/client/latest.json",
         },
         "cors": {
             "enabled": False,
