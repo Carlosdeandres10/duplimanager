@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from server_py.utils import config_store
 from server_py.utils.logger import get_logger
-from server_py.utils.paths import WEB_DIR
+from server_py.utils.paths import WEB_DIR, DOCS_DIR, DOCS_HTML_PATH
 from server_py.services.panel_auth import is_panel_auth_enabled, is_session_valid, SESSION_COOKIE_NAME
 
 # ─── CONFIG ───────────────────────────────────────────────
@@ -112,6 +112,15 @@ app.include_router(system.router)
 # --- Frontend Serving ---
 app.mount("/css", StaticFiles(directory=str(WEB_DIR / "css")), name="css")
 app.mount("/js", StaticFiles(directory=str(WEB_DIR / "js")), name="js")
+if DOCS_DIR.exists():
+    app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
+
+
+@app.get("/docs.html")
+async def serve_docs_html():
+    if not DOCS_HTML_PATH.exists():
+        raise HTTPException(status_code=404, detail="Manual no disponible en esta instalación")
+    return FileResponse(str(DOCS_HTML_PATH))
 
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):

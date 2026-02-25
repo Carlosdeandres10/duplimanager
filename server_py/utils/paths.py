@@ -31,7 +31,8 @@ CONFIG_DIR = DATA_DIR / "config"
 LOGS_DIR = DATA_DIR / "logs"
 BIN_DIR = BUNDLE_DIR / "bin"
 WEB_DIR = BUNDLE_DIR / "web"
-DOCS_HTML_PATH = BUNDLE_DIR / "docs.html"
+DOCS_HTML_PATH = DATA_DIR / "docs.html"
+DOCS_DIR = DATA_DIR / "docs"
 CACHE_DIR = CONFIG_DIR / "cache"
 REMOTE_CACHE_DIR = CACHE_DIR
 REMOTE_CACHE_PROBES_DIR = REMOTE_CACHE_DIR / "probes"
@@ -56,8 +57,8 @@ def runtime_paths_info() -> Dict[str, Any]:
         "logsDir": str(LOGS_DIR),
         "cacheDir": str(CACHE_DIR),
         "webDir": str(WEB_DIR),
+        "docsDir": str(DOCS_DIR),
         "docsHtmlPath": str(DOCS_HTML_PATH),
         "defaultDuplicacyPath": str(DEFAULT_DUPLICACY_EXE),
         "pythonExecutable": str(Path(sys.executable).resolve()),
     }
-
