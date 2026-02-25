@@ -176,7 +176,7 @@ jobs:
             ""
             "## Integridad"
             ""
-            "- SHA256: `$hash`"
+            ("- SHA256: " + '`' + $hash + '`')
           ) | Out-File -FilePath $notesFile -Encoding utf8
 
       - name: Upload build artifacts
@@ -217,4 +217,3 @@ jobs:
           generate_release_notes: true
           append_body: true
           body_path: installer/output/release-notes.md
-
