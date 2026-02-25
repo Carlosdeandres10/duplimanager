@@ -2,6 +2,16 @@
 let backupProgressTimer = null;
 let backupProgressStartedAtMs = 0;
 
+function setBackupFinishButtonVisible(show) {
+    const btn = document.getElementById('btn-finish-backup');
+    if (!btn) return;
+    btn.style.display = show ? '' : 'none';
+    const isRunning = !!currentBackupRunRepoId;
+    btn.disabled = false;
+    btn.textContent = isRunning ? '⏹ Terminar' : '✅ Finalizar';
+    btn.title = isRunning ? 'Solicitar cancelación del backup en ejecución' : 'Limpiar log y estado de la ejecución';
+}
+
 function formatProgressElapsed(ms) {
     const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
     const min = Math.floor(totalSec / 60);
@@ -40,6 +50,33 @@ function stopBackupProgressTimer() {
     }
 }
 
+function finalizeBackupRunView() {
+    if (currentBackupRunRepoId) {
+        cancelBackupRun();
+        return;
+    }
+    if (currentBackupEventSource) {
+        currentBackupEventSource.close();
+        currentBackupEventSource = null;
+    }
+    stopBackupProgressTimer();
+    const progressBar = document.getElementById('backup-progress-fill');
+    const statusText = document.getElementById('backup-status');
+    const logOutput = document.getElementById('backup-log');
+    if (progressBar) progressBar.style.width = '0%';
+    if (statusText) statusText.textContent = 'Selecciona un repositorio para iniciar la copia de seguridad';
+    if (logOutput) logOutput.textContent = 'Listo para iniciar...';
+    setBackupProgressDetails({
+        phase: 'Esperando',
+        elapsed: '00:00',
+        snapshot: '—',
+        target: '—',
+        lastline: 'Listo para iniciar',
+    });
+    setBackupFinishButtonVisible(false);
+    updateBackupRunButtonState(false);
+}
+
 async function loadBackupView() {
     try {
         const data = await API.getRepos();
@@ -60,6 +97,7 @@ async function loadBackupView() {
             target: '—',
             lastline: 'Listo para iniciar',
         });
+        if (!currentBackupRunRepoId) setBackupFinishButtonVisible(false);
         updateBackupRunButtonState();
     } catch (err) {
         showToast('Error cargando backups', 'error');
@@ -143,6 +181,7 @@ async function runBackup(repoId) {
     if (progressBar) progressBar.style.width = '0%';
     if (statusText) statusText.textContent = 'Ejecutando backup...';
     currentBackupRunRepoId = repoId;
+    setBackupFinishButtonVisible(true);
     updateBackupRunButtonState(true);
 
     let evtSource = null;
@@ -222,6 +261,7 @@ async function runBackup(repoId) {
                     : (data.success === false ? 'Finalizado con error' : 'Backup completado correctamente'),
             });
             currentBackupRunRepoId = null;
+            setBackupFinishButtonVisible(true);
             updateBackupRunButtonState(false);
             loadDashboard();
             return;
@@ -279,6 +319,7 @@ async function runBackup(repoId) {
             lastline: err.message || 'Error iniciando backup',
         });
         currentBackupRunRepoId = null;
+        setBackupFinishButtonVisible(true);
         updateBackupRunButtonState(false);
     }
 }

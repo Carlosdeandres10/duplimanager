@@ -2,6 +2,18 @@
 let restoreProgressTimer = null;
 let restoreProgressStartedAtMs = 0;
 let restoreRunInProgress = false;
+let currentRestoreRunContext = null;
+let restoreCancelRequested = false;
+let currentRestoreEventSource = null;
+
+function setRestoreFinishButtonVisible(show) {
+    const btn = document.getElementById('btn-finish-restore');
+    if (!btn) return;
+    btn.style.display = show ? '' : 'none';
+    btn.disabled = false;
+    btn.textContent = restoreRunInProgress ? '⏹ Terminar' : '✅ Finalizar';
+    btn.title = restoreRunInProgress ? 'Solicitar cancelación de la restauración en ejecución' : 'Limpiar log y estado de la restauración';
+}
 
 function formatRestoreElapsed(ms) {
     const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
@@ -41,6 +53,151 @@ function stopRestoreProgressTimer() {
         clearInterval(restoreProgressTimer);
         restoreProgressTimer = null;
     }
+}
+
+async function finalizeRestoreRunView() {
+    if (restoreRunInProgress) {
+        if (!currentRestoreRunContext) {
+            showToast('Hay una restauración en ejecución, pero no se pudo identificar su contexto.', 'warning');
+            return;
+        }
+        const statusText = document.getElementById('restore-status');
+        const logOutput = document.getElementById('restore-log');
+        try {
+            restoreCancelRequested = true;
+            if (currentRestoreRunContext.kind === 'repo' && currentRestoreRunContext.repoId) {
+                await API.cancelRestore(currentRestoreRunContext.repoId);
+            } else if (currentRestoreRunContext.storageId) {
+                await API.cancelRestoreFromStorage(currentRestoreRunContext.storageId);
+            } else {
+                throw new Error('No hay contexto de restauración cancelable');
+            }
+            if (statusText) statusText.textContent = 'Cancelando restauración...';
+            if (logOutput) {
+                logOutput.textContent += '\n⏹ Cancelación solicitada...\n';
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+            setRestoreProgressDetails({ phase: 'Cancelando', lastline: 'Cancelación solicitada por el usuario' });
+            showToast('⏹ Cancelación solicitada', 'info');
+        } catch (err) {
+            restoreCancelRequested = false;
+            showToast('❌ No se pudo cancelar: ' + (err?.message || err), 'error');
+        }
+        return;
+    }
+    stopRestoreProgressTimer();
+    if (currentRestoreEventSource) {
+        currentRestoreEventSource.close();
+        currentRestoreEventSource = null;
+    }
+    const statusText = document.getElementById('restore-status');
+    const logOutput = document.getElementById('restore-log');
+    if (statusText) statusText.textContent = 'Esperando...';
+    if (logOutput) logOutput.textContent = 'Listo para restaurar...';
+    setRestoreProgressDetails({
+        phase: 'Esperando',
+        elapsed: '00:00',
+        snapshot: '—',
+        revision: '—',
+        target: '—',
+        mode: isRestoreAllMode() ? 'Completo' : `Parcial (${restoreSelectedPatterns.size} seleccionado/s)`,
+        lastline: 'Listo para restaurar',
+    });
+    currentRestoreRunContext = null;
+    restoreCancelRequested = false;
+    setRestoreFinishButtonVisible(false);
+}
+
+function beginRestoreProgressStreaming(subscribeFn, { logOutput, statusText }) {
+    let streamDisconnected = false;
+
+    if (currentRestoreEventSource) {
+        try { currentRestoreEventSource.close(); } catch {}
+        currentRestoreEventSource = null;
+    }
+
+    const evtSource = subscribeFn((data) => {
+        if (data.error) {
+            streamDisconnected = true;
+            if (currentRestoreEventSource === evtSource) currentRestoreEventSource = null;
+            if (statusText) statusText.textContent = 'Restauración en curso (seguimiento desconectado)';
+            setRestoreProgressDetails({
+                phase: 'Seguimiento desconectado',
+                lastline: 'Se perdió la conexión de progreso. La restauración puede seguir en ejecución.',
+            });
+            if (logOutput) {
+                logOutput.textContent += '\n⚠️ Se perdió la conexión de progreso. La restauración puede seguir ejecutándose en el servidor.\n';
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+            setRestoreFinishButtonVisible(true);
+            return;
+        }
+
+        if (data.done) {
+            if (currentRestoreEventSource) {
+                currentRestoreEventSource.close();
+                currentRestoreEventSource = null;
+            }
+            stopRestoreProgressTimer();
+            const finalText = String(data.finalOutput || '').trim();
+            if (logOutput && finalText) {
+                logOutput.textContent += '\n--- Salida final Duplicacy ---\n' + finalText + '\n';
+            }
+            if (logOutput) {
+                if (data.canceled) {
+                    logOutput.textContent += '\n⏹ Restauración cancelada por el usuario.\n';
+                } else if (data.success === false) {
+                    logOutput.textContent += '\n❌ Restauración finalizada con error.\n';
+                } else if (!streamDisconnected) {
+                    logOutput.textContent += '\n✅ Restauración completada.\n';
+                }
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+            if (statusText) {
+                if (data.canceled) statusText.textContent = 'Restauración cancelada';
+                else if (data.success === false) statusText.textContent = 'Error en restauración';
+                else if (!streamDisconnected) statusText.textContent = 'Restauración completada';
+            }
+            const outputLast = finalText.split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Restauración completada';
+            setRestoreProgressDetails({
+                phase: data.canceled ? 'Cancelada' : (data.success === false ? 'Error' : 'Completada'),
+                elapsed: formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs),
+                lastline: data.canceled ? 'Cancelada por el usuario' : (data.success === false ? 'Finalizado con error' : outputLast),
+            });
+            if (data.canceled) {
+                showToast('⏹ Restauración cancelada', 'info');
+            } else if (data.success === false) {
+                showToast('❌ Restauración finalizada con error', 'error');
+            } else {
+                showToast('✅ Restauración completada', 'success');
+            }
+            restoreRunInProgress = false;
+            currentRestoreRunContext = null;
+            restoreCancelRequested = false;
+            setRestoreFinishButtonVisible(true);
+            return;
+        }
+
+        if (data.running && !data.output) {
+            if (statusText) statusText.textContent = 'Restaurando...';
+            setRestoreProgressDetails({
+                phase: 'Procesando',
+                lastline: 'Procesando restauración...',
+            });
+            return;
+        }
+
+        if (data.output && logOutput) {
+            if (statusText) statusText.textContent = 'Restaurando ficheros...';
+            const lastLine = String(data.output || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Salida de Duplicacy';
+            setRestoreProgressDetails({ phase: 'Ejecutando', lastline: lastLine });
+            logOutput.textContent += data.output + '\n';
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+    });
+
+    currentRestoreEventSource = evtSource;
+    setRestoreFinishButtonVisible(true);
 }
 
 async function loadRestoreView() {
@@ -84,6 +241,7 @@ async function loadRestoreView() {
             mode: 'Completo',
             lastline: 'Listo para restaurar',
         });
+        setRestoreFinishButtonVisible(false);
     }
     toggleRestoreAllMode();
 }
@@ -286,7 +444,7 @@ async function pickRestoreTargetFolder() {
     await pickFolderIntoInput(input);
 }
 
-async function loadRestoreRevisions() {
+async function loadRestoreRevisions(forceRefresh = false) {
     const ctx = getRestoreSelectionContext();
     const list = document.getElementById('restore-revision-list');
     const hint = document.getElementById('restore-revision-hint');
@@ -307,12 +465,12 @@ async function loadRestoreRevisions() {
             ? `repo:${ctx.repoId}`
             : `storage:${ctx.storageId}:${ctx.snapshotId}`;
         let data;
-        if (restoreRevisionsCache[cacheKey]) {
+        if (!forceRefresh && restoreRevisionsCache[cacheKey]) {
             data = restoreRevisionsCache[cacheKey];
         } else {
             data = ctx.kind === 'repo'
-                ? await API.getSnapshots(ctx.repoId)
-                : await API.getStorageSnapshotRevisions(ctx.storageId, ctx.snapshotId);
+                ? await API.getSnapshots(ctx.repoId, { refresh: !!forceRefresh })
+                : await API.getStorageSnapshotRevisions(ctx.storageId, ctx.snapshotId, { refresh: !!forceRefresh });
             restoreRevisionsCache[cacheKey] = data;
         }
         const snapshots = (data.snapshots || []).sort((a, b) => b.revision - a.revision);
@@ -768,6 +926,9 @@ async function restoreFromSnapshot(repoId, revision) {
     if (!confirm(`¿Restaurar revisión #${revision}? Esto sobrescribirá los archivos actuales.`)) return;
 
     restoreRunInProgress = true;
+    restoreCancelRequested = false;
+    currentRestoreRunContext = { kind: 'repo', repoId };
+    setRestoreFinishButtonVisible(true);
     if (currentView !== 'restore') navigateTo('restore');
 
     const logOutput = document.getElementById('restore-log');
@@ -802,7 +963,7 @@ async function restoreFromSnapshot(repoId, revision) {
     try {
         startRestoreProgressTimer();
         setRestoreProgressDetails({ phase: 'Restaurando', lastline: 'Ejecutando Duplicacy restore...' });
-        const result = await API.restore(
+        await API.restore(
             repoId,
             revision,
             true,
@@ -810,28 +971,26 @@ async function restoreFromSnapshot(repoId, revision) {
             restorePath || undefined,
             (!isRestoreAllMode() && patterns.length) ? patterns : undefined
         );
-        if (logOutput) logOutput.textContent += '\n' + (result.output || 'Restauración completada') + '\n';
-        if (statusText) statusText.textContent = 'Restauración completada';
-        stopRestoreProgressTimer();
-        const outputLast = String(result.output || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Restauración completada';
-        setRestoreProgressDetails({
-            phase: 'Completada',
-            elapsed: formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs),
-            lastline: outputLast,
-        });
-        showToast('✅ Restauración completada', 'success');
+        beginRestoreProgressStreaming(
+            (onMessage) => API.subscribeRestoreProgress(repoId, onMessage),
+            { logOutput, statusText }
+        );
+        showToast('⏳ Restauración iniciada', 'info');
     } catch (err) {
-        if (logOutput) logOutput.textContent += '\n❌ Error: ' + err.message + '\n';
-        if (statusText) statusText.textContent = 'Error en restauración';
+        const msg = err?.message || 'Error de restauración';
+        const wasCanceled = restoreCancelRequested || /cancelad/i.test(String(msg));
+        if (logOutput) logOutput.textContent += '\n' + (wasCanceled ? '⏹ Restauración cancelada por el usuario.' : ('❌ Error: ' + msg)) + '\n';
+        if (statusText) statusText.textContent = wasCanceled ? 'Restauración cancelada' : 'Error en restauración';
         stopRestoreProgressTimer();
         setRestoreProgressDetails({
-            phase: 'Error',
+            phase: wasCanceled ? 'Cancelada' : 'Error',
             elapsed: restoreProgressStartedAtMs ? formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs) : '00:00',
-            lastline: err.message || 'Error de restauración',
+            lastline: wasCanceled ? 'Cancelada por el usuario' : msg,
         });
-        showToast('❌ Error: ' + err.message, 'error');
-    } finally {
+        showToast(wasCanceled ? '⏹ Restauración cancelada' : ('❌ Error: ' + msg), wasCanceled ? 'info' : 'error');
         restoreRunInProgress = false;
+        currentRestoreRunContext = null;
+        setRestoreFinishButtonVisible(true);
     }
 }
 
@@ -879,10 +1038,13 @@ async function submitRestore(e) {
     });
 
     restoreRunInProgress = true;
+    restoreCancelRequested = false;
+    currentRestoreRunContext = { kind: 'storage', storageId: ctx.storageId };
+    setRestoreFinishButtonVisible(true);
     try {
         startRestoreProgressTimer();
         setRestoreProgressDetails({ phase: 'Restaurando', lastline: 'Ejecutando restauración desde storage...' });
-        const result = await API.restoreFromStorage(ctx.storageId, {
+        await API.restoreFromStorage(ctx.storageId, {
             storageId: ctx.storageId,
             snapshotId: ctx.snapshotId,
             revision,
@@ -890,28 +1052,26 @@ async function submitRestore(e) {
             restorePath,
             patterns: (!isRestoreAllMode() && patterns.length) ? patterns : undefined,
         });
-        if (logOutput) logOutput.textContent += '\n' + (result.output || 'Restauración completada') + '\n';
-        if (statusText) statusText.textContent = 'Restauración completada';
-        stopRestoreProgressTimer();
-        const outputLast = String(result.output || '').split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'Restauración completada';
-        setRestoreProgressDetails({
-            phase: 'Completada',
-            elapsed: formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs),
-            lastline: outputLast,
-        });
-        showToast('✅ Restauración completada', 'success');
+        beginRestoreProgressStreaming(
+            (onMessage) => API.subscribeStorageRestoreProgress(ctx.storageId, onMessage),
+            { logOutput, statusText }
+        );
+        showToast('⏳ Restauración iniciada', 'info');
     } catch (err) {
-        if (logOutput) logOutput.textContent += '\n❌ Error: ' + err.message + '\n';
-        if (statusText) statusText.textContent = 'Error en restauración';
+        const msg = err?.message || 'Error de restauración';
+        const wasCanceled = restoreCancelRequested || /cancelad/i.test(String(msg));
+        if (logOutput) logOutput.textContent += '\n' + (wasCanceled ? '⏹ Restauración cancelada por el usuario.' : ('❌ Error: ' + msg)) + '\n';
+        if (statusText) statusText.textContent = wasCanceled ? 'Restauración cancelada' : 'Error en restauración';
         stopRestoreProgressTimer();
         setRestoreProgressDetails({
-            phase: 'Error',
+            phase: wasCanceled ? 'Cancelada' : 'Error',
             elapsed: restoreProgressStartedAtMs ? formatRestoreElapsed(Date.now() - restoreProgressStartedAtMs) : '00:00',
-            lastline: err.message || 'Error de restauración',
+            lastline: wasCanceled ? 'Cancelada por el usuario' : msg,
         });
-        showToast('❌ Error: ' + err.message, 'error');
-    } finally {
+        showToast(wasCanceled ? '⏹ Restauración cancelada' : ('❌ Error: ' + msg), wasCanceled ? 'info' : 'error');
         restoreRunInProgress = false;
+        currentRestoreRunContext = null;
+        setRestoreFinishButtonVisible(true);
     }
 }
 

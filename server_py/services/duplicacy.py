@@ -224,6 +224,7 @@ class DuplicacyService:
         extra_env: Optional[Dict[str, str]] = None,
         patterns: Optional[List[str]] = None,
         threads: Optional[int] = None,
+        on_process_start: Optional[Callable[[Any], None]] = None,
     ):
         args = ["restore", "-r", str(revision)]
         if storage_name:
@@ -237,36 +238,77 @@ class DuplicacyService:
         if extra_env:
             env.update(extra_env)
 
-        import tempfile
-        
-        # WinError 206 limit command line to 32768 characters.
-        # Use an ignore file to pass patterns instead of pure args.
         if patterns:
-            # We must use delete=False because the duplicacy subprocess might 
-            # run into permission errors in Windows if the file is held by Python
-            tf = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False)
-            try:
-                for p in patterns:
-                    # Duplicacy syntax: '+' to include explicitly
-                    # But the frontend might already be sending specific patterns.
-                    # Duplicacy accepts inclusion patterns by prefixing with '+' or '-'
-                    # Ensure it works smoothly with what the frontend sends.
-                    prefix = "" if p.startswith("+") or p.startswith("-") else "+"
-                    tf.write(f"{prefix}{p}\n")
-                # Default drop everything else when we include specific files
-                tf.write("-*\n")
-                tf.close()
-                
-                args.extend(["-ignore", tf.name])
-                result = await self.exec(args, repo_path, env=env, on_progress=on_progress)
-            finally:
-                try:
-                    os.remove(tf.name)
-                except Exception as cleanup_err:
-                    logger.warning(f"Failed to clean up temp ignore file {tf.name}: {cleanup_err}")
-            return result
-        else:
-            return await self.exec(args, repo_path, env=env, on_progress=on_progress)
+            # Duplicacy restore NO soporta -ignore. Para evitar WinError 206 en Windows
+            # (línea de comando demasiado larga) restauramos en lotes de patrones.
+            clean_patterns = [str(p or "").strip() for p in patterns if str(p or "").strip()]
+            if not clean_patterns:
+                return await self.exec(
+                    args,
+                    repo_path,
+                    env=env,
+                    on_progress=on_progress,
+                    on_process_start=on_process_start,
+                )
+
+            max_cmd_chars = 20000  # margen conservador por debajo del límite de Windows
+            max_patterns_per_batch = 400
+            base_cmd_chars = sum(len(str(a)) + 3 for a in args) + 8  # + "--" y margen
+            batches: List[List[str]] = []
+            current_batch: List[str] = []
+            current_chars = 0
+
+            for pat in clean_patterns:
+                pat_chars = len(pat) + 3
+                would_exceed_chars = (base_cmd_chars + current_chars + pat_chars) > max_cmd_chars
+                would_exceed_count = len(current_batch) >= max_patterns_per_batch
+                if current_batch and (would_exceed_chars or would_exceed_count):
+                    batches.append(current_batch)
+                    current_batch = []
+                    current_chars = 0
+                current_batch.append(pat)
+                current_chars += pat_chars
+            if current_batch:
+                batches.append(current_batch)
+
+            combined_stdout: List[str] = []
+            last_result: Dict[str, Any] = {"code": 0, "stdout": "", "stderr": ""}
+            total = len(batches)
+
+            for idx, batch in enumerate(batches, start=1):
+                if on_progress and total > 1:
+                    on_progress(f"[Restore] Lote {idx}/{total}: {len(batch)} patrón(es)")
+                batch_args = [*args, "--", *batch]
+                last_result = await self.exec(
+                    batch_args,
+                    repo_path,
+                    env=env,
+                    on_progress=on_progress,
+                    on_process_start=on_process_start,
+                )
+                out = str(last_result.get("stdout") or "")
+                if out:
+                    combined_stdout.append(out)
+                if int(last_result.get("code", -1)) != 0:
+                    return {
+                        "code": int(last_result.get("code", -1)),
+                        "stdout": "\n".join(combined_stdout).strip(),
+                        "stderr": str(last_result.get("stderr") or ""),
+                    }
+
+            return {
+                "code": 0,
+                "stdout": "\n".join(combined_stdout).strip(),
+                "stderr": "",
+            }
+
+        return await self.exec(
+            args,
+            repo_path,
+            env=env,
+            on_progress=on_progress,
+            on_process_start=on_process_start,
+        )
 
 
     # ─── PARSERS ────────────────────────────────────────────────

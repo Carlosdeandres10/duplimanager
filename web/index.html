@@ -275,6 +275,9 @@
               <button id="btn-cancel-backup" class="btn btn-danger" onclick="cancelBackupRun()" style="display: none;">
                 🛑 Cancelar
               </button>
+              <button id="btn-finish-backup" class="btn btn-ghost" onclick="finalizeBackupRunView()" style="display: none;">
+                ✅ Finalizar
+              </button>
             </div>
 
             <div class="progress-container" style="margin-bottom: 24px;">
@@ -355,7 +358,7 @@
               <div class="form-group">
                 <label class="form-label">Revisiones disponibles</label>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                  <button type="button" class="btn btn-ghost btn-sm" onclick="loadRestoreRevisions()">🔄 Cargar revisiones</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="loadRestoreRevisions(true)">🔄 Cargar revisiones</button>
                   <select id="restore-revision-list" class="form-select" style="flex:1; min-width: 220px;" onchange="onRestoreRevisionChange()" required>
                     <option value="">-- Selecciona una revisión --</option>
                   </select>
@@ -385,9 +388,14 @@
                 </span>
               </div>
 
-              <button type="submit" class="btn btn-primary" style="width: 100%">
-                🔄 Restaurar
-              </button>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button type="submit" class="btn btn-primary" style="flex:1; min-width: 220px;">
+                  🔄 Restaurar
+                </button>
+                <button type="button" id="btn-finish-restore" class="btn btn-ghost" onclick="finalizeRestoreRunView()" style="display:none;">
+                  ✅ Finalizar
+                </button>
+              </div>
             </form>
 
             <div style="margin-top: 24px">

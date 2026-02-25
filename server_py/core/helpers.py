@@ -32,7 +32,7 @@ from server_py.models.schemas import (
     RepoCreate, BackupStart, BackupCancelRequest, RestoreRequest, StorageRestoreRequest,
     WasabiConnectionTest, WasabiSnapshotDetectRequest, RepoUpdate, StorageCreate, StorageUpdate
 )
-from .storage_helpers import (sanitize_storage, get_storage_by_id, get_repo_storage, get_primary_storage, describe_storage, get_storage_env, get_repo_duplicacy_password, build_wasabi_env, get_storage_record_env, build_wasabi_storage_url, resolve_repo_destination, infer_repo_destination_type, build_destination_from_update, build_destination_from_storage_ref, list_all_storages_for_ui, repo_matches_storage_record)
+from .storage_helpers import (sanitize_storage, get_storage_by_id, get_repo_storage, get_primary_storage, describe_storage, get_storage_env, get_repo_duplicacy_password, build_wasabi_env, get_storage_record_env, build_wasabi_storage_url, resolve_repo_destination, infer_repo_destination_type, build_destination_from_update, build_destination_from_storage_ref, list_all_storages_for_ui, repo_matches_storage_record, normalize_storage_comparable_url)
 
 logger = get_logger("Helpers")
 
@@ -46,6 +46,43 @@ FIXED_DUPLICACY_THREADS = 16
 
 INTERNAL_SECRET_KEYS = {"_secrets", "wasabiAccessKey", "wasabiAccessId"}
 INTERNAL_STORAGE_SECRET_KEYS = {"_secrets", "accessId", "accessKey", "duplicacyPassword"}
+
+
+def _load_duplicacy_preferences_entries(target_dir: Path) -> List[Dict[str, Any]]:
+    pref_file = target_dir / ".duplicacy" / "preferences"
+    if not pref_file.exists():
+        return []
+    try:
+        raw = json.loads(pref_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La carpeta de restauración contiene .duplicacy pero no se pudo leer preferences: {exc}",
+        )
+    if isinstance(raw, list):
+        return [x for x in raw if isinstance(x, dict)]
+    if isinstance(raw, dict):
+        return [raw]
+    return []
+
+
+def _restore_target_matches_existing_duplicacy(
+    *,
+    target_dir: Path,
+    expected_snapshot_id: str,
+    expected_storage_url: str,
+) -> bool:
+    entries = _load_duplicacy_preferences_entries(target_dir)
+    if not entries:
+        return False
+    expected_snapshot = str(expected_snapshot_id or "").strip()
+    expected_storage = normalize_storage_comparable_url(expected_storage_url)
+    for entry in entries:
+        current_snapshot = str(entry.get("id") or "").strip()
+        current_storage = normalize_storage_comparable_url(entry.get("storage") or "")
+        if current_snapshot == expected_snapshot and current_storage == expected_storage:
+            return True
+    return False
 
 
 def sanitize_repo(repo: Dict[str, Any]) -> Dict[str, Any]:
@@ -587,24 +624,38 @@ async def ensure_restore_target_initialized(repo: Dict[str, Any], target_path: s
     target.mkdir(parents=True, exist_ok=True)
     duplicacy_dir = target / ".duplicacy"
 
+    primary = get_repo_storage(repo, storage_name or "default") or get_primary_storage(repo)
+    if not primary:
+        raise HTTPException(status_code=400, detail="Repositorio sin storage configurado")
+    expected_snapshot_id = str(repo.get("snapshotId") or "")
+    expected_storage_url = str(primary.get("url") or "")
+
     if duplicacy_dir.exists():
+        if _restore_target_matches_existing_duplicacy(
+            target_dir=target,
+            expected_snapshot_id=expected_snapshot_id,
+            expected_storage_url=expected_storage_url,
+        ):
+            logger.info(
+                "[Restore] Reutilizando .duplicacy existente en destino=%s snapshot=%s storage=%s",
+                str(target),
+                expected_snapshot_id,
+                expected_storage_url,
+            )
+            return
         raise HTTPException(
             status_code=400,
             detail=(
-                f"La carpeta de restauración ya contiene .duplicacy ({duplicacy_dir}). "
-                "DupliManager no reutiliza automáticamente esa configuración para evitar mezclar storages. "
+                f"La carpeta de restauración ya contiene .duplicacy ({duplicacy_dir}) con otra configuración. "
+                "Esto puede mezclar el backup actual con otro distinto. "
                 "Usa una carpeta sin .duplicacy o elimina/renombra esa carpeta .duplicacy."
             ),
         )
 
-    primary = get_repo_storage(repo, storage_name or "default") or get_primary_storage(repo)
-    if not primary:
-        raise HTTPException(status_code=400, detail="Repositorio sin storage configurado")
-
     init_result = await duplicacy_service.init(
         str(target),
-        repo["snapshotId"],
-        primary["url"],
+        expected_snapshot_id,
+        expected_storage_url,
         password=password,
         encrypt=bool(repo.get("encrypted")),
         extra_env=get_storage_env(repo, storage_name or primary.get("name")),
@@ -631,6 +682,19 @@ async def ensure_restore_target_initialized_from_storage(
     target.mkdir(parents=True, exist_ok=True)
     duplicacy_dir = target / ".duplicacy"
     if duplicacy_dir.exists():
+        expected_storage_url = str(storage.get("url") or "")
+        if _restore_target_matches_existing_duplicacy(
+            target_dir=target,
+            expected_snapshot_id=snapshot_id,
+            expected_storage_url=expected_storage_url,
+        ):
+            logger.info(
+                "[Restore] Reutilizando .duplicacy existente en destino=%s snapshot=%s storage=%s",
+                str(target),
+                snapshot_id,
+                expected_storage_url,
+            )
+            return
         raise HTTPException(
             status_code=400,
             detail=(

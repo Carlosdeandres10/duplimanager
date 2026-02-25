@@ -41,6 +41,9 @@ class RestoreRequest(BaseModel):
     restorePath: Optional[str] = None
     patterns: Optional[List[str]] = None
 
+class RestoreCancelRequest(BaseModel):
+    repoId: str
+
 class StorageRestoreRequest(BaseModel):
     storageId: str
     snapshotId: str
@@ -49,6 +52,9 @@ class StorageRestoreRequest(BaseModel):
     password: Optional[str] = None
     restorePath: Optional[str] = None
     patterns: Optional[List[str]] = None
+
+class StorageRestoreCancelRequest(BaseModel):
+    storageId: str
 
 class WasabiConnectionTest(BaseModel):
     endpoint: str

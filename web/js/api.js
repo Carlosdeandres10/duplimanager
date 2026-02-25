@@ -94,8 +94,9 @@ const API = {
         return this._fetch(`/storages/${id}/snapshots`);
     },
 
-    async getStorageSnapshotRevisions(storageId, snapshotId) {
+    async getStorageSnapshotRevisions(storageId, snapshotId, opts = {}) {
         const q = new URLSearchParams({ snapshot_id: snapshotId });
+        if (opts && opts.refresh) q.set('refresh', '1');
         return this._fetch(`/storages/${storageId}/snapshot-revisions?${q.toString()}`);
     },
 
@@ -108,6 +109,13 @@ const API = {
         return this._fetch(`/storages/${storageId}/restore`, {
             method: 'POST',
             body: JSON.stringify(payload)
+        });
+    },
+
+    async cancelRestoreFromStorage(storageId) {
+        return this._fetch(`/storages/${storageId}/restore/cancel`, {
+            method: 'POST',
+            body: JSON.stringify({ storageId })
         });
     },
 
@@ -219,9 +227,39 @@ const API = {
         return evtSource;
     },
 
+    subscribeRestoreProgress(repoId, onMessage) {
+        const evtSource = new EventSource(`${this.BASE}/restore/progress/${repoId}`);
+        evtSource.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            onMessage(data);
+            if (data.done) evtSource.close();
+        };
+        evtSource.onerror = () => {
+            evtSource.close();
+            onMessage({ done: true, error: true });
+        };
+        return evtSource;
+    },
+
+    subscribeStorageRestoreProgress(storageId, onMessage) {
+        const evtSource = new EventSource(`${this.BASE}/storages/${storageId}/restore/progress`);
+        evtSource.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            onMessage(data);
+            if (data.done) evtSource.close();
+        };
+        evtSource.onerror = () => {
+            evtSource.close();
+            onMessage({ done: true, error: true });
+        };
+        return evtSource;
+    },
+
     // ─── SNAPSHOTS ──────────────────────────────────────
-    async getSnapshots(repoId) {
-        return this._fetch(`/snapshots/${repoId}`);
+    async getSnapshots(repoId, opts = {}) {
+        const q = new URLSearchParams();
+        if (opts && opts.refresh) q.set('refresh', '1');
+        return this._fetch(`/snapshots/${repoId}${q.toString() ? `?${q.toString()}` : ''}`);
     },
 
     async getSnapshotFiles(repoId, revision) {
@@ -233,6 +271,13 @@ const API = {
         return this._fetch('/restore', {
             method: 'POST',
             body: JSON.stringify({ repoId, revision, overwrite, password, restorePath, patterns })
+        });
+    },
+
+    async cancelRestore(repoId) {
+        return this._fetch('/restore/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ repoId })
         });
     },
 
