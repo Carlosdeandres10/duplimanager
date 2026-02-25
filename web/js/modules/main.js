@@ -114,6 +114,8 @@ function updateAuthUIState() {
             authBadge.textContent = '🔒 Panel protegido';
         } else if (authState.requiresAuth) {
             authBadge.textContent = '🔐 Acceso requerido';
+        } else if (authState.configured) {
+            authBadge.textContent = '🟡 Contraseña guardada (desactivada)';
         } else {
             authBadge.textContent = '🔓 Sin contraseña';
         }
