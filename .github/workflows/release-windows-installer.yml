@@ -179,6 +179,78 @@ jobs:
             ("- SHA256: " + '`' + $hash + '`')
           ) | Out-File -FilePath $notesFile -Encoding utf8
 
+      - name: Install AWS CLI (Wasabi publish)
+        if: ${{ steps.meta.outputs.mode == 'client' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)) }}
+        shell: pwsh
+        run: |
+          python -m pip install awscli
+
+      - name: Generate latest.json (client updates)
+        if: ${{ steps.meta.outputs.mode == 'client' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)) }}
+        shell: pwsh
+        env:
+          WASABI_PUBLIC_BASE_URL: ${{ secrets.WASABI_PUBLIC_BASE_URL }}
+        run: |
+          if (-not $env:WASABI_PUBLIC_BASE_URL) { throw "Falta secret WASABI_PUBLIC_BASE_URL" }
+          $baseUrl = $env:WASABI_PUBLIC_BASE_URL.Trim().TrimEnd('/')
+          $metaPath = "installer/output/release-metadata.json"
+          if (-not (Test-Path $metaPath)) { throw "No se encontró $metaPath" }
+          $meta = Get-Content $metaPath -Raw | ConvertFrom-Json
+          $installerName = "${{ steps.meta.outputs.installer_name }}"
+          $notesName = "release-notes.md"
+          $latest = [ordered]@{
+            version = "${{ steps.meta.outputs.version }}"
+            url = "$baseUrl/$installerName"
+            sha256 = [string]$meta.installer.sha256
+            size = [int64]$meta.installer.size
+            publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+            notesUrl = "$baseUrl/$notesName"
+            mandatory = $false
+          }
+          $latest | ConvertTo-Json -Depth 5 | Out-File -FilePath "installer/output/latest.json" -Encoding utf8
+
+      - name: Publish release assets to Wasabi (client)
+        if: ${{ steps.meta.outputs.mode == 'client' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)) }}
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.WASABI_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.WASABI_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.WASABI_REGION }}
+          WASABI_BUCKET: ${{ secrets.WASABI_BUCKET }}
+          WASABI_ENDPOINT: ${{ secrets.WASABI_ENDPOINT }}
+          WASABI_RELEASES_PREFIX: ${{ secrets.WASABI_RELEASES_PREFIX }}
+        run: |
+          foreach ($name in @("WASABI_BUCKET","WASABI_ENDPOINT","WASABI_RELEASES_PREFIX","AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY")) {
+            if (-not (Get-Item -Path "Env:$name" -ErrorAction SilentlyContinue).Value) {
+              throw "Falta secret requerido: $name"
+            }
+          }
+          $bucket = $env:WASABI_BUCKET.Trim()
+          $endpoint = $env:WASABI_ENDPOINT.Trim()
+          $prefix = $env:WASABI_RELEASES_PREFIX.Trim().Trim('/')
+          $version = "${{ steps.meta.outputs.version }}"
+          $rootUri = "s3://$bucket/$prefix"
+          $versionUri = "$rootUri/$version"
+
+          $rootFiles = @(
+            "${{ steps.meta.outputs.installer_path }}",
+            "installer/output/SHA256SUMS.txt",
+            "installer/output/release-metadata.json",
+            "installer/output/release-notes.md",
+            "installer/output/latest.json"
+          )
+
+          foreach ($file in $rootFiles) {
+            if (-not (Test-Path $file)) { throw "No existe archivo para subir: $file" }
+            aws --endpoint-url $endpoint s3 cp $file "$rootUri/" --only-show-errors
+          }
+
+          foreach ($file in $rootFiles) {
+            $leaf = Split-Path $file -Leaf
+            if ($leaf -eq "latest.json") { continue }
+            aws --endpoint-url $endpoint s3 cp $file "$versionUri/$leaf" --only-show-errors
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

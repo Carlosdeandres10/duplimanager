@@ -101,6 +101,7 @@
           <div class="version">
             v1.0.0 · Powered by Caisoft
           </div>
+          <div id="update-notice-footer" class="footer-update" style="display:none;"></div>
         </div>
       </aside>
 
@@ -492,6 +493,16 @@
                     <option value="light">Claro</option>
                   </select>
                   <span class="form-hint">Se aplica al guardar. La previsualización es inmediata.</span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">URL de actualización (latest.json)</label>
+                  <input
+                    type="url"
+                    id="setting-updates-url"
+                    class="form-input"
+                    placeholder="https://descargas.tudominio.com/duplimanager/client/latest.json"
+                  />
+                  <span class="form-hint">Si está configurada, DupliManager comprobará al abrir si hay una versión nueva.</span>
                 </div>
               </div>
 

@@ -23,6 +23,10 @@ DEFAULTS = {
         "duplicacy_path": str(DEFAULT_DUPLICACY_EXE),
         "language": "es",
         "theme": "dark",
+        "updates": {
+            "enabled": True,
+            "url": "",
+        },
         "cors": {
             "enabled": False,
             "allowOrigins": [],

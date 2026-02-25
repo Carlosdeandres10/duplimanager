@@ -3,7 +3,10 @@ import uuid
 import tempfile
 import asyncio
 import hashlib
+import json
 import re
+import urllib.request
+import urllib.error
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -39,6 +42,7 @@ from server_py.core.helpers import (
 
 router = APIRouter(tags=["system"])
 logger = get_logger("SystemRouter")
+APP_VERSION = (os.getenv("DUPLIMANAGER_VERSION") or "1.0.0").strip() or "1.0.0"
 
 LOG_LINE_RE = re.compile(r"^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s*(.*)$")
 
@@ -201,13 +205,46 @@ def _log_counts(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
             types[op] = types.get(op, 0) + 1
     return {"levels": levels, "types": types}
 
+
+def _parse_semverish(value: str) -> Optional[List[int]]:
+    s = str(value or "").strip()
+    if not s:
+        return None
+    if s.lower().startswith("v"):
+        s = s[1:]
+    m = re.match(r"^(\d+)\.(\d+)\.(\d+)", s)
+    if not m:
+        return None
+    return [int(m.group(1)), int(m.group(2)), int(m.group(3))]
+
+
+def _is_version_newer(latest: str, current: str) -> bool:
+    a = _parse_semverish(latest)
+    b = _parse_semverish(current)
+    if not a or not b:
+        return False
+    return tuple(a) > tuple(b)
+
+
+def _fetch_json_url(url: str, timeout_seconds: float = 4.0) -> Dict[str, Any]:
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": f"DupliManager/{APP_VERSION} (update-check)"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+        raw = resp.read()
+    data = json.loads(raw.decode("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("latest.json debe ser un objeto JSON")
+    return data
+
 # ─── API ROUTES ───────────────────────────────────────────
 
 @router.get("/api/health")
 async def health():
     return {
         "ok": True,
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -513,6 +550,57 @@ async def migrate_secrets(request: Request):
 @router.get("/api/system/paths")
 async def get_system_paths():
     return {"ok": True, "paths": runtime_paths_info()}
+
+
+@router.get("/api/system/update-check")
+async def get_update_check():
+    s = settings_config.read() or {}
+    updates = dict(s.get("updates") or {})
+    enabled = bool(updates.get("enabled", True))
+    url = str(updates.get("url") or "").strip()
+    base_payload = {
+        "ok": True,
+        "currentVersion": APP_VERSION,
+        "enabled": enabled,
+        "configured": bool(url),
+        "sourceUrl": url,
+        "checkOk": False,
+        "updateAvailable": False,
+        "latestVersion": None,
+        "downloadUrl": None,
+        "notesUrl": None,
+        "publishedAt": None,
+        "mandatory": False,
+        "error": None,
+    }
+    if not enabled or not url:
+        return base_payload
+
+    try:
+        remote = _fetch_json_url(url)
+        latest_version = str(remote.get("version") or "").strip()
+        download_url = str(remote.get("url") or "").strip()
+        if not latest_version:
+            raise ValueError("latest.json no contiene 'version'")
+        base_payload.update({
+            "checkOk": True,
+            "latestVersion": latest_version,
+            "downloadUrl": (download_url or None),
+            "notesUrl": (str(remote.get("notesUrl") or "").strip() or None),
+            "publishedAt": (str(remote.get("publishedAt") or "").strip() or None),
+            "mandatory": bool(remote.get("mandatory", False)),
+            "updateAvailable": _is_version_newer(latest_version, APP_VERSION),
+        })
+        return base_payload
+    except urllib.error.HTTPError as ex:
+        base_payload["error"] = f"HTTP {ex.code} al consultar updates"
+        return base_payload
+    except urllib.error.URLError as ex:
+        base_payload["error"] = f"No se pudo consultar updates: {getattr(ex, 'reason', ex)}"
+        return base_payload
+    except Exception as ex:
+        base_payload["error"] = f"Error validando latest.json: {ex}"
+        return base_payload
 
 # --- Config & Logs ---
 

@@ -172,6 +172,10 @@ const API = {
         return this._fetch('/system/paths');
     },
 
+    async checkUpdates() {
+        return this._fetch('/system/update-check');
+    },
+
     // ─── AUTH ───────────────────────────────────────────
     async authStatus() {
         return this._fetch('/auth/status');

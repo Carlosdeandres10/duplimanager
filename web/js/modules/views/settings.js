@@ -16,6 +16,7 @@ async function loadSettingsView() {
         document.getElementById('setting-port').value = s.port || 8500;
         document.getElementById('setting-language').value = s.language || 'es';
         document.getElementById('setting-theme').value = s.theme || currentTheme || 'dark';
+        document.getElementById('setting-updates-url').value = (s.updates && s.updates.url) || '';
         const setChecked = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
         const setValue = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
         setChecked('setting-hc-enabled', !!hc.enabled);
@@ -155,6 +156,10 @@ async function saveSettings(e) {
             port: parseInt(document.getElementById('setting-port').value, 10),
             language: document.getElementById('setting-language').value,
             theme: document.getElementById('setting-theme').value,
+            updates: {
+                enabled: true,
+                url: (document.getElementById('setting-updates-url')?.value || '').trim(),
+            },
             panelAccess: {
                 cookieSecureMode: (document.getElementById('setting-panel-cookie-secure-mode')?.value || 'auto').trim() || 'auto',
                 sessionTtlSeconds: ttlSeconds,

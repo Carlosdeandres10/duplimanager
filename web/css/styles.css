@@ -236,6 +236,17 @@ body {
   color: var(--text-primary);
 }
 
+.sidebar-footer .footer-update {
+  font-size: 11px;
+  color: var(--accent-yellow);
+  line-height: 1.35;
+}
+
+.sidebar-footer .footer-update a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 .sidebar-footer #server-status {
   display: flex;
   align-items: center;

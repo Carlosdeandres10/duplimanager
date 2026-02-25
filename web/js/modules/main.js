@@ -6,6 +6,7 @@
 // ─── INIT ───────────────────────────────────────────────
 let appBootstrapped = false;
 let authState = { requiresAuth: false, authenticated: true, enabled: false, configured: false };
+let updateNoticeShown = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
@@ -37,6 +38,7 @@ function startAppUI() {
     initNavigation();
     navigateTo('dashboard');
     checkServerHealth();
+    checkAppUpdatesOnStartup();
 }
 
 function initTheme() {
@@ -201,6 +203,41 @@ async function checkServerHealth() {
         if (indicator) {
             indicator.innerHTML = `<span class="badge badge-error">🔴 Servidor offline</span>`;
         }
+    }
+}
+
+function renderUpdateNoticeFooter(html, visible = true) {
+    const el = document.getElementById('update-notice-footer');
+    if (!el) return;
+    el.innerHTML = html || '';
+    el.style.display = visible && html ? 'block' : 'none';
+}
+
+async function checkAppUpdatesOnStartup() {
+    try {
+        const data = await API.checkUpdates();
+        if (!data || data.checkOk !== true) {
+            renderUpdateNoticeFooter('', false);
+            return;
+        }
+        if (!data.updateAvailable) {
+            renderUpdateNoticeFooter('', false);
+            return;
+        }
+        const latest = data.latestVersion || '?';
+        const url = data.downloadUrl || '';
+        if (url) {
+            renderUpdateNoticeFooter(`⬆️ Nueva versión <b>${latest}</b> · <a href="${url}" target="_blank" rel="noopener noreferrer">Descargar</a>`);
+        } else {
+            renderUpdateNoticeFooter(`⬆️ Nueva versión disponible: ${latest}`);
+        }
+        if (!updateNoticeShown) {
+            updateNoticeShown = true;
+            showToast(`⬆️ Nueva versión disponible: ${latest}`, 'info');
+        }
+    } catch {
+        // No interrumpir el arranque si la comprobación de updates falla.
+        renderUpdateNoticeFooter('', false);
     }
 }
 
