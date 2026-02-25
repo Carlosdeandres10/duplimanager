@@ -171,6 +171,7 @@ Nota operativa:
 ### Documentacion operativa creada
 - `docs/incident-recovery-panel-access.md`
 - `docs/deployment-hardening-windows.md`
+- `docs/windows-packaging.md`
 
 ### Configuracion CORS (backend)
 - `settings.cors.enabled` (bool)
@@ -194,3 +195,21 @@ Ejemplo:
 
 Nota:
 - Los cambios de CORS se aplican al reiniciar el servicio.
+
+## Fase 1.5 - Preparativos pre-empaquetado (higiene y estabilidad)
+### Hecho
+- `requirements-lock.txt` fijado para builds reproducibles.
+- `tests/test_security_core.py` (rate limit + `cookieSecureMode`) anadidos.
+- Limpieza de imports en `server_py/main.py`.
+- `pick-folder` deshabilitado en builds `frozen` para evitar dependencias graficas (`tkinter`) en servidor.
+- Scripts de build separados:
+  - `scripts/build-client.ps1` (excluye `server_py.tools.maintenance`)
+  - `scripts/build-support-maintenance.ps1` (uso interno)
+- Higiene de repo para pre-build:
+  - `server.log` ignorado
+  - ignores de artefactos `build/`, `dist/`, `*.spec`
+
+### Pendiente (fase siguiente)
+- Script/plantilla de instalador Windows (MSI/EXE)
+- Servicio Windows (WinSW/NSSM/alternativa elegida)
+- Checklist post-instalacion automatizable

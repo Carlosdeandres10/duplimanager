@@ -9,6 +9,7 @@ venv/
 # Runtime / generated app data
 config/*.json
 logs/*.log
+server.log
 !config/.gitkeep
 !logs/.gitkeep
 config/cache/
@@ -26,6 +27,11 @@ server/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Build / packaging artifacts
+build/
+dist/
+*.spec
 
 # SQLite / Database
 *.db

@@ -125,6 +125,7 @@
             <li><a href="#panel-hardening">Panel Web (Auth)</a></li>
             <li><a href="#secrets-dpapi">Secretos y DPAPI</a></li>
             <li><a href="#windows-hardening">Despliegue Windows Seguro</a></li>
+            <li><a href="#windows-packaging">Empaquetado Windows</a></li>
             <li><a href="#recovery-panel">Recuperación de Acceso</a></li>
 
             <div class="nav-category">Guías de Solución de Errores</div>
@@ -291,6 +292,20 @@
             </ul>
             <p><strong>CLI local (ejemplos):</strong> <code>python -m server_py.tools.maintenance panel-auth-status</code>, <code>panel-auth-unlock</code>, <code>panel-auth-unlock --clear-password</code>.</p>
             <p>Guía operativa: <code>docs/incident-recovery-panel-access.md</code>.</p>
+        </div>
+
+        <h2 id="windows-packaging">📦 Empaquetado Windows (Pre-Build / Fase 1.5)</h2>
+
+        <div class="file-card">
+            <h3>Build Cliente vs Build Soporte <span class="badge">Pre-Empaquetado</span></h3>
+            <p><strong>Objetivo:</strong> separar el binario de cliente (panel/API) de la herramienta interna de mantenimiento de soporte para no distribuir capacidades de break-glass en instalaciones cliente.</p>
+            <ul>
+                <li><strong>Build cliente:</strong> <code>scripts/build-client.ps1</code> (incluye <code>web/</code>, excluye <code>server_py.tools.maintenance</code> y <code>tkinter</code>).</li>
+                <li><strong>Build soporte:</strong> <code>scripts/build-support-maintenance.ps1</code> (CLI interna de mantenimiento, uso exclusivo de soporte/proveedor).</li>
+                <li><strong>Dependencias fijas:</strong> usar <code>requirements-lock.txt</code> para reproducibilidad.</li>
+                <li><strong>Checklist:</strong> pruebas MVP, arranque en VM Windows limpia y verificación de que el CLI interno no viaja en la distribución cliente.</li>
+            </ul>
+            <p>Guía detallada: <code>docs/windows-packaging.md</code>.</p>
         </div>
 
 
