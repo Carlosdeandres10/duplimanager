@@ -211,11 +211,35 @@ body {
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
 }
 
 .sidebar-footer .version {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.sidebar-footer #server-status {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-footer #auth-status-badge {
+  display: block;
+  line-height: 1.35;
+  padding-left: 2px;
+}
+
+.sidebar-footer #panel-logout-wrap {
+  width: 100%;
+}
+
+.sidebar-footer #btn-panel-logout {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 /* ─── PAGE HEADER ──────────────────────────────────── */
@@ -1815,9 +1839,10 @@ body[data-theme="light"] .form-label {
 
 body[data-theme="light"] .form-input,
 body[data-theme="light"] .form-select {
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  background: #ffffff;
   color: #0f172a;
-  border-color: rgba(15, 23, 42, 0.1);
+  border-color: rgba(15, 23, 42, 0.22);
+  box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.04);
 }
 
 body[data-theme="light"] .form-select {
